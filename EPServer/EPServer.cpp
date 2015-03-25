@@ -24,7 +24,7 @@ using socket_id_t = int;
 
 MD5 md5;
 
-ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3 };
+const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, str_t<30>::make(vers) };
 
 account_list_t g_accounts;
 player_list_t g_players;
@@ -628,12 +628,8 @@ int main()
 {
 	printf("EPServer version: %s\n", vers);
 
-	// prepare version info
-	version_info.data.length = static_cast<u8>(std::min(strlen(vers), sizeof(version_info.data)));
-	memcpy(version_info.data.data, vers, version_info.data.length);
-
 	g_accounts.load();
-	g_accounts.save();
+	g_accounts.save(); // TODO: remove
 
 	printf("EPServer initialization...\n");
 
