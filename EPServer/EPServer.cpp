@@ -22,14 +22,6 @@ using socket_id_t = int;
 
 #endif
 
-MD5 md5;
-
-const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, str_t<30>::make(vers) };
-
-account_list_t g_accounts;
-player_list_t g_players;
-listener_list_t g_listeners;
-
 class socket_t
 {
 	std::atomic<socket_id_t> socket;
@@ -52,6 +44,26 @@ public:
 		if (socket != INVALID_SOCKET)
 		{
 			DROP(socket);
+		}
+	}
+
+	void reset(socket_id_t socket)
+	{
+		auto old = this->socket.exchange(socket);
+
+		if (old != INVALID_SOCKET)
+		{
+			DROP(old);
+		}
+	}
+
+	void close()
+	{
+		auto old = socket.exchange(INVALID_SOCKET);
+
+		if (old != INVALID_SOCKET)
+		{
+			DROP(old);
 		}
 	}
 
@@ -95,6 +107,15 @@ public:
 
 	}
 };
+
+MD5 md5;
+
+const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, str_t<30>::make(vers) };
+
+account_list_t g_accounts;
+player_list_t g_players;
+listener_list_t g_listeners;
+socket_t g_server;
 
 void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t> account, std::shared_ptr<player_t> player, std::shared_ptr<listener_t> listener)
 {
@@ -453,6 +474,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				{
 					// restart server
 					listener->push_text("Not implemented.");
+					g_server.close(); // for test
 				}
 				else
 				{
@@ -634,17 +656,18 @@ int main()
 	printf("EPServer initialization...\n");
 
 #ifdef _WIN32
-	std::unique_ptr<WSADATA, void(*)(WSADATA*)> wsa(new WSADATA{ 0 }, [](WSADATA* pointer)
-	{
-		WSACleanup();
-		delete pointer;
-	});
+	WSADATA wsa_info = {};
 
-	if (auto res = WSAStartup(MAKEWORD(2, 2), wsa.get()))
+	if (auto res = WSAStartup(MAKEWORD(2, 2), &wsa_info))
 	{
 		printf("WSAStartup() failed: 0x%x\n", res);
 		return -1;
 	}
+
+	atexit([]()
+	{
+		WSACleanup();
+	});
 #endif
 
 	auto sid = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -654,7 +677,7 @@ int main()
 		return -1;
 	}
 
-	socket_t server(sid);
+	g_server.reset(sid);
 
 	sockaddr_in info;
 	info.sin_family = AF_INET;
@@ -680,7 +703,7 @@ int main()
 		if (aid == INVALID_SOCKET)
 		{
 			printf("accept() returned 0x%x\n", GETERROR);
-			printf("EPServer stopped.");
+			printf("EPServer stopped.\n");
 			return 0;
 		}
 
