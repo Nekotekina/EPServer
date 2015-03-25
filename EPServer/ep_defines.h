@@ -130,11 +130,13 @@ struct ServerTextRec
 
 struct ClientCmdRec
 {
+	static const u16 max_data_size = 65521;
+
 	u16 cmd;
 	s32 v0;
 	s32 v1;
 	s32 v2;
-	char data[65521];
+	char data[max_data_size];
 };
 
 struct ServerVersionRec

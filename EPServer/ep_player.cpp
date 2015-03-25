@@ -31,7 +31,7 @@ std::shared_ptr<player_t> player_list_t::add_player(const std::shared_ptr<accoun
 	player->account = account;
 	//player->conn_count = 1;
 
-	for (u32& i = player->index; i < m_list.size(); i++)
+	for (u32& i = player->index = 0; i < m_list.size(); i++)
 	{
 		if (!m_list[i])
 		{
@@ -71,8 +71,7 @@ void player_list_t::generate_player_list(ServerListRec& plist, u32 self)
 	plist.self = self;
 	plist.count = static_cast<u32>(m_list.size());
 
-	PlayerElement empty = {};
-	empty.gindex = -1;
+	PlayerElement empty = { {}, 0, -1 };
 
 	for (u32 i = 0; i < m_list.size(); i++)
 	{
