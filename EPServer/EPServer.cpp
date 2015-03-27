@@ -520,7 +520,6 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				// Quit manually (TODO)
 				//g_players.remove_player(player->index);
 				//g_listeners.update_player(player);
-				listener->push(ProtocolHeader{ SERVER_DISCONNECT });
 				return;
 			}
 
@@ -546,6 +545,16 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
 {
+	auto message = [](socket_t* socket, std::string text)
+	{
+		const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size));
+
+		ServerTextRec data = { SERVER_TEXT, size + sizeof(double), 0.0 }; // TODO: timestamp
+		memcpy(data.data, text.c_str(), size);
+
+		socket->put(&data, data.size + 3);
+	};
+
 	std::shared_ptr<socket_t> socket(new socket_t(aid));
 
 	// TODO: send public key
@@ -553,6 +562,7 @@ void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
 	if (send(aid, (char*)&header, sizeof(ProtocolHeader), 0) != sizeof(ProtocolHeader))
 	{
 		printf("- %s:%d (I)\n", inet_ntoa(ip), port);
+		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
 
@@ -563,6 +573,8 @@ void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
 		auth.size != sizeof(ClientAuthRec) - 3)
 	{
 		printf("- %s:%d (II)\n", inet_ntoa(ip), port);
+		message(socket.get(), "Invalid auth packet");
+		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
 
@@ -570,6 +582,8 @@ void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
 	if (auth.name.length > 16 || !IsLoginValid(auth.name.data, auth.name.length))
 	{
 		printf("- %s:%d (III)\n", inet_ntoa(ip), port);
+		message(socket.get(), "Invalid login");
+		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
 
@@ -584,12 +598,16 @@ void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
 	if (!account)
 	{
 		printf("- %s:%d (IV)\n", inet_ntoa(ip), port); // TODO: messages (wrong password)
+		message(socket.get(), "Invalid password");
+		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
 
 	if (account->flags & PF_NOCONNECT)
 	{
 		printf("- %s:%d (V)\n", inet_ntoa(ip), port);
+		message(socket.get(), "Account is banned");
+		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
 
@@ -598,14 +616,18 @@ void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
 	std::shared_ptr<player_t> player = g_players.add_player(account);
 	if (!player)
 	{
-		printf("- %s:%d (VI)\n", inet_ntoa(ip), port); // TODO: messages (too many players)
+		printf("- %s:%d (VI)\n", inet_ntoa(ip), port);
+		message(socket.get(), "Too many players connected");
+		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
 
 	std::shared_ptr<listener_t> listener = g_listeners.add_listener(player);
 	if (!listener)
 	{
-		printf("- %s:%d (VII)\n", inet_ntoa(ip), port); // TODO: messages (too many listeners)
+		printf("- %s:%d (VII)\n", inet_ntoa(ip), port);
+		message(socket.get(), "Too many connections");
+		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
 
@@ -624,13 +646,14 @@ void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
 		if (!socket->put(version_info) || !socket->put(&plist, plist.size + 3))
 		{
 			printf("- %s:%d (VIII)\n", inet_ntoa(ip), port);
+			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
 	}
 
 	g_listeners.update_player(player);
 
-	// start client subthread (receiver shouldn't send or close socket)
+	// start receiver subthread (it shouldn't send data directly)
 	std::thread(receiver_thread, socket, account, player, listener).detach();
 
 	// start sending packets
@@ -639,11 +662,14 @@ void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
 		if (!socket->put(packet->data(), static_cast<u32>(packet->size())))
 		{
 			printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
+			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
 	}
 
+	// connection closed
 	printf("- %s:%d (X)\n", inet_ntoa(ip), port);
+	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 }
 
 int main()
