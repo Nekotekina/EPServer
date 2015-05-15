@@ -14,7 +14,9 @@
 #include <condition_variable>
 #include <algorithm>
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 
 using u8 = uint8_t;
 using u16 = uint16_t;

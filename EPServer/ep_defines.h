@@ -21,15 +21,15 @@ template<u8 N> struct str_t
 
 	static str_t make(const char* str)
 	{
-		str_t res = { std::min<size_t>(strlen(str), N) };
-		memcpy(res.data, str, res.length);
+		str_t res;
+		memcpy(res.data, str, res.length = static_cast<u8>(std::min<size_t>(strlen(str), N)));
 		return res;
 	}
 
 	static str_t make(const char* str, u8 len)
 	{
-		str_t res = { len };
-		memcpy(res.data, str, res.length);
+		str_t res;
+		memcpy(res.data, str, res.length = len);
 		return res;
 	}
 
