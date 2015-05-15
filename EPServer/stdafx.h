@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <cstring>
 #include <sys/stat.h>
 #include <string>
 #include <array>

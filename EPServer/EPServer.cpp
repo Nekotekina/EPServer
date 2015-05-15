@@ -12,13 +12,21 @@
 #define GETERROR (int)WSAGetLastError()
 #define DROP(sid) closesocket(sid)
 using socket_id_t = SOCKET;
+using inaddr_t = IN_ADDR;
+using socklen_t = int;
 
 #else
 
+#include <unistd.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #define GETERROR (int)errno
-#define DROP(sid) close(sid)
+#define DROP(sid) ::close(sid)
+#define INVALID_SOCKET (-1)
+#define SOCKET_ERROR (-1)
 using socket_id_t = int;
+using inaddr_t = decltype(sockaddr_in::sin_addr);
 
 #endif
 
@@ -543,7 +551,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 	}
 }
 
-void sender_thread(SOCKET aid, IN_ADDR ip, u16 port)
+void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 {
 	auto message = [](socket_t* socket, std::string text)
 	{
@@ -724,7 +732,7 @@ int main()
 
 	while (true)
 	{
-		int size = sizeof(sockaddr_in);
+		socklen_t size = sizeof(sockaddr_in);
 		auto aid = accept(sid, (sockaddr*)&info, &size);
 		if (aid == INVALID_SOCKET)
 		{
