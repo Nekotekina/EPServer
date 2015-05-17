@@ -1,4 +1,5 @@
 #pragma once
+#include "ep_defines.h"
 
 class account_t final
 {

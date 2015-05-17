@@ -1,30 +1,34 @@
 #pragma once
+#include "ep_defines.h"
 
 class player_t;
 
 class listener_t final
 {
 	std::mutex m_mutex;
-	std::queue<pkt_t> m_queue;
+	std::queue<packet_t> m_queue;
 	std::condition_variable m_cond;
 
 public:
 	std::shared_ptr<player_t> player;
 
-	void push(const void* data, size_t size);
+	void push_packet(const packet_t& packet);
+
+	void push(const void* data, u32 size);
 
 	template<typename T> void push(const T& data)
 	{
 		push(&data, sizeof(T));
 	}
 
-	void push_pkt(const pkt_t& packet);
-
 	void push_text(const std::string& text);
 
-	void stop();
+	void stop()
+	{
+		push_packet(nullptr); // use empty message as stop message
+	}
 
-	pkt_t pop();
+	packet_t pop();
 };
 
 class listener_list_t final

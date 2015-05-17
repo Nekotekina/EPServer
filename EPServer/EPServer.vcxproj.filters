@@ -31,6 +31,9 @@
     <ClInclude Include="ep_listener.h">
       <Filter>EPServer</Filter>
     </ClInclude>
+    <ClInclude Include="ep_socket.h">
+      <Filter>EPServer</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -49,6 +52,9 @@
       <Filter>EPServer</Filter>
     </ClCompile>
     <ClCompile Include="ep_listener.cpp">
+      <Filter>EPServer</Filter>
+    </ClCompile>
+    <ClCompile Include="ep_socket.cpp">
       <Filter>EPServer</Filter>
     </ClCompile>
   </ItemGroup>

@@ -1,122 +1,10 @@
 #include "stdafx.h"
 #include "ep_defines.h"
+#include "ep_socket.h"
 #include "ep_account.h"
 #include "ep_player.h"
 #include "ep_listener.h"
 #include "hl_md5.h"
-
-#ifdef _WIN32
-
-#include <winsock2.h>
-#pragma comment(lib, "ws2_32.lib")
-#define GETERROR (int)WSAGetLastError()
-#define DROP(sid) closesocket(sid)
-using socket_id_t = SOCKET;
-using inaddr_t = IN_ADDR;
-using socklen_t = int;
-
-#else
-
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#define GETERROR (int)errno
-#define DROP(sid) ::close(sid)
-#define INVALID_SOCKET (-1)
-#define SOCKET_ERROR (-1)
-using socket_id_t = int;
-using inaddr_t = decltype(sockaddr_in::sin_addr);
-
-#endif
-
-class socket_t
-{
-	std::atomic<socket_id_t> socket;
-
-public:
-	// TODO: should also handle ciphering
-
-	socket_t()
-		: socket(INVALID_SOCKET)
-	{
-	}
-
-	socket_t(socket_id_t socket)
-		: socket(socket)
-	{
-	}
-
-	~socket_t()
-	{
-		if (socket != INVALID_SOCKET)
-		{
-			DROP(socket);
-		}
-	}
-
-	void reset(socket_id_t socket)
-	{
-		auto old = this->socket.exchange(socket);
-
-		if (old != INVALID_SOCKET)
-		{
-			DROP(old);
-		}
-	}
-
-	void close()
-	{
-		auto old = socket.exchange(INVALID_SOCKET);
-
-		if (old != INVALID_SOCKET)
-		{
-			DROP(old);
-		}
-	}
-
-	// send data
-	bool put(const void* data, u32 size)
-	{
-		if (send(socket, reinterpret_cast<const char*>(data), size, 0) != size)
-		{
-			// ???
-			return false;
-		}
-		return true;
-	}
-
-	// send data
-	template<typename T> bool put(const T& data)
-	{
-		return put(&data, sizeof(T));
-	}
-
-	// receive data
-	bool get(void* data, u32 size)
-	{
-		if (recv(socket, reinterpret_cast<char*>(data), size, MSG_WAITALL) != size)
-		{
-			// ???
-			return false;
-		}
-		return true;
-	}
-
-	// receive data
-	template<typename T> bool get(T& data)
-	{
-		return get(&data, sizeof(T));
-	}
-
-	// clear cipher padding in input buffer
-	void flush()
-	{
-
-	}
-};
-
-MD5 md5;
 
 const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, str_t<30>::make(vers) };
 
@@ -597,9 +485,9 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 	// prepare password
 	HL_MD5_CTX ctx;
-	md5.MD5Init(&ctx);
-	md5.MD5Update(&ctx, auth.pass.data(), 16); // calculate md5 from md5(password) arrived
-	md5.MD5Final(auth.pass.data(), &ctx);
+	MD5().MD5Init(&ctx);
+	MD5().MD5Update(&ctx, auth.pass.data(), 16); // calculate md5 from md5(password) arrived
+	MD5().MD5Final(auth.pass.data(), &ctx);
 
 	// find or create account
 	std::shared_ptr<account_t> account = g_accounts.add_account(auth.name, auth.pass);
@@ -667,7 +555,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	// start sending packets
 	while (auto packet = listener->pop())
 	{
-		if (!socket->put(packet->data(), static_cast<u32>(packet->size())))
+		if (!socket->put(packet->get(), packet->size()))
 		{
 			printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
@@ -732,6 +620,7 @@ int main()
 
 	while (true)
 	{
+		// accept connection
 		socklen_t size = sizeof(sockaddr_in);
 		auto aid = accept(sid, (sockaddr*)&info, &size);
 		if (aid == INVALID_SOCKET)
@@ -742,6 +631,8 @@ int main()
 		}
 
 		printf("+ %s:%d\n", inet_ntoa(info.sin_addr), info.sin_port);
+
+		// start client thread
 		std::thread(sender_thread, aid, info.sin_addr, info.sin_port).detach();
 	}
 }

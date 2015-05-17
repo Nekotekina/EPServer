@@ -3,8 +3,60 @@
 // MD5 hash container
 using md5_t = std::array<u8, 16>;
 
-// Data packet (could be std::dynarray)
-using pkt_t = std::shared_ptr<std::vector<u8>>;
+// Data packet data
+class packet_data_t
+{
+	std::unique_ptr<u8[]> m_data;
+	u32 m_size = 0;
+
+public:
+	packet_data_t()
+	{
+	}
+
+	packet_data_t(u32 size)
+		: m_data(new u8[size])
+		, m_size(size)
+	{
+	}
+
+	packet_data_t(packet_data_t&& right)
+		: m_data(std::move(right.m_data))
+		, m_size(right.m_size)
+	{
+		right.m_size = 0;
+	}
+
+	packet_data_t& operator =(packet_data_t&& right)
+	{
+		if (this != &right)
+		{
+			m_data = std::move(right.m_data);
+			m_size = right.m_size;
+			right.m_size = 0;
+		}
+		
+		return *this;
+	}
+
+	~packet_data_t()
+	{
+		memset(m_data.get(), 0, m_size); // burn
+	}
+
+	u8* get()
+	{
+		return m_data.get();
+	}
+
+	u32 size()
+	{
+		return m_size;
+	}
+};
+
+// Data packet
+using packet_t = std::shared_ptr<packet_data_t>;
 
 // Server identifier (UTF8 string)
 static const auto vers = "EPClient v0.16";
@@ -124,7 +176,7 @@ struct ServerTextRec
 
 	u8 code;
 	u16 size;
-	double stamp; // message timestamp (OLE automation time)
+	f64 stamp; // message timestamp (OLE automation time)
 	char data[max_data_size]; // utf-8 text
 };
 

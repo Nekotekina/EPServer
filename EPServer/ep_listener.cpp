@@ -4,13 +4,8 @@
 #include "ep_player.h"
 #include "ep_listener.h"
 
-void listener_t::push(const void* data, size_t size)
+void listener_t::push_packet(const packet_t& packet)
 {
-	pkt_t packet(new pkt_t::element_type);
-	packet->resize(size);
-
-	memcpy(packet->data(), data, size);
-
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -20,52 +15,31 @@ void listener_t::push(const void* data, size_t size)
 	m_cond.notify_one();
 }
 
-void listener_t::push_pkt(const pkt_t& packet)
+void listener_t::push(const void* data, u32 size)
 {
-	{
-		std::lock_guard<std::mutex> lock(m_mutex);
+	packet_t packet(new packet_data_t(size));
 
-		m_queue.push(packet);
-	}
+	memcpy(packet->get(), data, size);
 
-	m_cond.notify_one();
+	push_packet(packet);
 }
 
 void listener_t::push_text(const std::string& text)
 {
 	const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size)); // text size
 
-	pkt_t packet(new pkt_t::element_type);
-	packet->resize(size + 11);
+	packet_t packet(new packet_data_t(size + 11));
 
-	auto data = reinterpret_cast<ServerTextRec*>(packet->data());
+	auto data = reinterpret_cast<ServerTextRec*>(packet->get());
 	data->code = SERVER_TEXT;
-	data->size = size + sizeof(double);
-	data->stamp = 0; // TODO: timestamp
+	data->size = size + sizeof(f64);
+	data->stamp = 0.0; // TODO: timestamp
 	memcpy(data->data, text.c_str(), size);
 
-	{
-		std::lock_guard<std::mutex> lock(m_mutex);
-
-		m_queue.push(packet);
-	}
-
-	m_cond.notify_one();
+	push_packet(packet);
 }
 
-void listener_t::stop()
-{
-	{
-		std::lock_guard<std::mutex> lock(m_mutex);
-
-		// use empty message as stop message
-		m_queue.emplace();
-	}
-
-	m_cond.notify_one();
-}
-
-pkt_t listener_t::pop()
+packet_t listener_t::pop()
 {
 	std::unique_lock<std::mutex> lock(m_mutex);
 
@@ -74,7 +48,7 @@ pkt_t listener_t::pop()
 		m_cond.wait(lock);
 	}
 
-	pkt_t packet = std::move(m_queue.front());
+	packet_t packet = std::move(m_queue.front());
 	m_queue.pop();
 	return packet;
 }
@@ -116,10 +90,9 @@ void listener_list_t::remove_listener(const listener_t* listener)
 
 void listener_list_t::update_player(const std::shared_ptr<player_t>& player)
 {
-	pkt_t packet(new pkt_t::element_type);
-	packet->resize(sizeof(ServerUpdatePlayer));
+	packet_t packet(new packet_data_t(sizeof(ServerUpdatePlayer)));
 
-	auto data = reinterpret_cast<ServerUpdatePlayer*>(packet->data());
+	auto data = reinterpret_cast<ServerUpdatePlayer*>(packet->get());
 	data->code = SERVER_PUPDATE;
 	data->size = sizeof(ServerUpdatePlayer) - 3;
 	data->index = player->index;
@@ -127,9 +100,9 @@ void listener_list_t::update_player(const std::shared_ptr<player_t>& player)
 
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	for (auto& l : m_list)
+	for (auto& listener : m_list)
 	{
-		l->push_pkt(packet);
+		listener->push_packet(packet);
 	}
 }
 
@@ -137,22 +110,21 @@ void listener_list_t::broadcast(const std::string& text, const std::function<boo
 {
 	const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size)); // text size
 
-	pkt_t packet(new pkt_t::element_type);
-	packet->resize(size + 11);
+	packet_t packet(new packet_data_t(size + 11));
 
-	auto data = reinterpret_cast<ServerTextRec*>(packet->data());
+	auto data = reinterpret_cast<ServerTextRec*>(packet->get());
 	data->code = SERVER_TEXT;
-	data->size = size + sizeof(double);
-	data->stamp = 0; // TODO: timestamp
+	data->size = size + sizeof(f64);
+	data->stamp = 0.0; // TODO: timestamp
 	memcpy(data->data, text.c_str(), size);
 
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	for (auto& l : m_list)
+	for (auto& listener : m_list)
 	{
-		if (pred(l.get()))
+		if (pred(listener.get()))
 		{
-			l->push_pkt(packet);
+			listener->push_packet(packet);
 		}
 	}
 }
