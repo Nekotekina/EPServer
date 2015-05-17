@@ -34,6 +34,9 @@
     <ClInclude Include="ep_socket.h">
       <Filter>EPServer</Filter>
     </ClInclude>
+    <ClInclude Include="rc6.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -56,6 +59,9 @@
     </ClCompile>
     <ClCompile Include="ep_socket.cpp">
       <Filter>EPServer</Filter>
+    </ClCompile>
+    <ClCompile Include="rc6.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

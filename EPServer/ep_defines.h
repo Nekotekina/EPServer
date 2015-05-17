@@ -44,12 +44,12 @@ public:
 		memset(m_data.get(), 0, m_size); // burn
 	}
 
-	u8* get()
+	u8* get() const
 	{
 		return m_data.get();
 	}
 
-	u32 size()
+	u32 size() const
 	{
 		return m_size;
 	}

@@ -1,5 +1,6 @@
 #pragma once
 #include "ep_defines.h"
+#include "rc6.h"
 
 #ifdef _WIN32
 
@@ -110,18 +111,30 @@ public:
 class cipher_socket_t : public socket_t
 {
 protected:
-	packet_data_t m_key;
+	rc6_cipher_t m_cipher;
 
 public:
 	cipher_socket_t(packet_data_t key)
-		: m_key(std::move(key))
+		: m_cipher(std::move(key))
 	{
-
 	}
 
 	virtual bool put(const void* data, u32 size) override
 	{
-		return socket_t::put(data, size);
+		const u32 asize = size + 15 & ~15;
+
+		std::unique_ptr<rc6_block_t[]> buf(new rc6_block_t[asize % 16]);
+
+		memset(buf.get(), 0, asize);
+
+		memcpy(buf.get(), data, size);
+
+		for (u32 i = 0; i < asize / 16; i++)
+		{
+			m_cipher.encrypt_cbc(buf.get()[i]);
+		}
+
+		return socket_t::put(buf.get(), asize);
 	}
 
 	virtual bool get(void* data, u32 size) override
