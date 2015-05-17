@@ -3,9 +3,13 @@
 
 #ifdef _WIN32
 
+#if defined(_MSC_VER)
+#define _WINSOCK_DEPRECATED_NO_WARNINGS // TODO
+#pragma comment(lib, "ws2_32.lib")
+#endif
+
 #include <winsock2.h>
-#pragma comment(lib, "ws2_32.lib") // MSVC only
-#define GETERROR (int)WSAGetLastError()
+#define GETERROR WSAGetLastError()
 #define DROP(sid) closesocket(sid)
 using socket_id_t = SOCKET;
 using inaddr_t = IN_ADDR;
@@ -17,7 +21,7 @@ using socklen_t = int;
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#define GETERROR (int)errno
+#define GETERROR errno
 #define DROP(sid) ::close(sid)
 #define INVALID_SOCKET (-1)
 #define SOCKET_ERROR (-1)

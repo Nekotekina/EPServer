@@ -445,7 +445,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size));
 
-		ServerTextRec data = { SERVER_TEXT, static_cast<u16>(size + sizeof(double)), 0.0 }; // TODO: timestamp
+		ServerTextRec data = { SERVER_TEXT, static_cast<u16>(size + sizeof(double)), GetTime() };
 		memcpy(data.data, text.c_str(), size);
 
 		socket->put(&data, data.size + 3);

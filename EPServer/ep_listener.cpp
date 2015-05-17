@@ -33,7 +33,7 @@ void listener_t::push_text(const std::string& text)
 	auto data = reinterpret_cast<ServerTextRec*>(packet->get());
 	data->code = SERVER_TEXT;
 	data->size = size + sizeof(f64);
-	data->stamp = 0.0; // TODO: timestamp
+	data->stamp = GetTime();
 	memcpy(data->data, text.c_str(), size);
 
 	push_packet(packet);
@@ -115,7 +115,7 @@ void listener_list_t::broadcast(const std::string& text, const std::function<boo
 	auto data = reinterpret_cast<ServerTextRec*>(packet->get());
 	data->code = SERVER_TEXT;
 	data->size = size + sizeof(f64);
-	data->stamp = 0.0; // TODO: timestamp
+	data->stamp = GetTime();
 	memcpy(data->data, text.c_str(), size);
 
 	std::lock_guard<std::mutex> lock(m_mutex);

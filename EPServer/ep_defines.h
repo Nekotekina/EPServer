@@ -341,3 +341,19 @@ static bool IsLoginValid(const char* str, size_t len)
 
 	return true;
 }
+
+// Get current time in days after midnight, 30 December 1899 (OLE automation time)
+static f64 GetTime()
+{
+	std::time_t now = std::time(0);
+
+	auto tm = std::gmtime(&now); // get UTC time
+
+	auto days = [](int y) -> int // get number of days since 01.01.0001
+	{
+		y--;
+		return 365 * y + y / 4 - y / 100 + y / 400 + 1;
+	};
+
+	return 2.0 + (days(tm->tm_year + 1900) - days(1900)) + tm->tm_yday + tm->tm_hour / 24.0 + tm->tm_min / 1440.0 + tm->tm_sec / 86400.0;
+}
