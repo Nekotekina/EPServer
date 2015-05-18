@@ -21,7 +21,10 @@ inline u32 ror32(u32 v, u32 s)
 
 rc6_cipher_t::rc6_cipher_t(packet_data_t key)
 {
-	assert(key.size() >= sizeof(rc6_block_t) && key.size() % 4 == 0);
+	if (key.size() != 16 && key.size() != 32 && key.size() != 64)
+	{
+		throw std::length_error("Invalid cipher key size");
+	}
 
 	m_dec_last = m_enc_last = *reinterpret_cast<rc6_block_t*>(key.get());
 

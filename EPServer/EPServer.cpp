@@ -11,7 +11,7 @@ const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersion
 account_list_t g_accounts;
 player_list_t g_players;
 listener_list_t g_listeners;
-socket_t g_server;
+cipher_socket_t g_server(INVALID_SOCKET, { 64 }); // test
 
 void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t> account, std::shared_ptr<player_t> player, std::shared_ptr<listener_t> listener)
 {
@@ -451,7 +451,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		socket.put(&data, data.size + 3);
 	};
 
-	std::shared_ptr<socket_t> socket(new cipher_socket_t(aid, { 32 }));
+	std::shared_ptr<socket_t> socket(new socket_t(aid));
 
 	// TODO: send public key
 	ProtocolHeader header = { SERVER_AUTH, 0 };
