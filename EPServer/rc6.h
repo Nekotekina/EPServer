@@ -2,7 +2,7 @@
 #include <emmintrin.h>
 #include "ep_defines.h"
 
-union _CRT_ALIGN(16) rc6_block_t
+union rc6_block_t
 {
 	u32 i[4];
 	__m128i vi;
