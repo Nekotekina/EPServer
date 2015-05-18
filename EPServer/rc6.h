@@ -8,7 +8,7 @@ union _CRT_ALIGN(16) rc6_block_t
 	__m128i vi;
 };
 
-struct rc6_cipher_t
+class rc6_cipher_t final
 {
 	enum : u32
 	{
@@ -26,9 +26,10 @@ struct rc6_cipher_t
 	rc6_block_t m_enc_last;
 	rc6_block_t m_dec_last;
 
+public:
 	rc6_cipher_t(packet_data_t key);
 	~rc6_cipher_t();
 
-	void encrypt_cbc(rc6_block_t& block);
-	void decrypt_cbc(rc6_block_t& block);
+	void encrypt_block_cbc(rc6_block_t& block);
+	void decrypt_block_cbc(rc6_block_t& block);
 };

@@ -112,26 +112,33 @@ class cipher_socket_t : public socket_t
 {
 protected:
 	rc6_cipher_t m_cipher;
+	str_t<15> m_received;
 
 public:
-	cipher_socket_t(packet_data_t key)
-		: m_cipher(std::move(key))
+	cipher_socket_t(socket_id_t socket, packet_data_t key)
+		: socket_t(socket)
+		, m_cipher(std::move(key))
 	{
+	}
+
+	virtual ~cipher_socket_t()
+	{
+		m_received = {}; // burn
 	}
 
 	virtual bool put(const void* data, u32 size) override
 	{
 		const u32 asize = size + 15 & ~15;
 
-		std::unique_ptr<rc6_block_t[]> buf(new rc6_block_t[asize % 16]);
-
-		memset(buf.get(), 0, asize);
+		std::unique_ptr<rc6_block_t[]> buf(new rc6_block_t[asize / 16]);
 
 		memcpy(buf.get(), data, size);
 
+		memset(reinterpret_cast<u8*>(buf.get()) + size, 0, asize - size); // zero padding
+
 		for (u32 i = 0; i < asize / 16; i++)
 		{
-			m_cipher.encrypt_cbc(buf.get()[i]);
+			m_cipher.encrypt_block_cbc(buf.get()[i]);
 		}
 
 		return socket_t::put(buf.get(), asize);
@@ -139,11 +146,44 @@ public:
 
 	virtual bool get(void* data, u32 size) override
 	{
-		return socket_t::get(data, size);
+		// try to get saved data
+		if (const u32 read = std::min<u32>(m_received.length, size))
+		{
+			memcpy(data, m_received.data, read);
+			m_received = str_t<15>(m_received.data + read, m_received.length - read); // shrink saved data
+
+			size -= read;
+			data = static_cast<u8*>(data) + read;
+		}
+
+		// try to receive new data from socket
+		if (const u32 asize = size + 15 & ~15)
+		{
+			std::unique_ptr<rc6_block_t[]> buf(new rc6_block_t[asize / 16]);
+
+			if (!socket_t::get(buf.get(), asize))
+			{
+				return false;
+			}
+
+			for (u32 i = 0; i < asize / 16; i++)
+			{
+				m_cipher.decrypt_block_cbc(buf.get()[i]);
+			}
+			
+			memcpy(data, buf.get(), size);
+			m_received = str_t<15>(reinterpret_cast<u8*>(buf.get()) + size, asize - size); // save exceeded data
+
+			memset(buf.get(), 0, asize); // burn
+		}
+
+		return true;
 	}
 
 	virtual void flush() override
 	{
+		m_received = {}; // clear saved data
+
 		return socket_t::flush();
 	}
 };

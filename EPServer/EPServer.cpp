@@ -6,7 +6,7 @@
 #include "ep_listener.h"
 #include "hl_md5.h"
 
-const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, str_t<30>::make(vers) };
+const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, str_t<30>(vers, strlen(vers)) };
 
 account_list_t g_accounts;
 player_list_t g_players;
@@ -15,8 +15,8 @@ socket_t g_server;
 
 void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t> account, std::shared_ptr<player_t> player, std::shared_ptr<listener_t> listener)
 {
-	auto only_online_players = [](listener_t* l){ return (l->player->account->flags & PF_OFF) == 0; };
-	auto all_players = [](...){ return true; };
+	auto only_online_players = [](listener_t& l){ return (l.player->account->flags & PF_OFF) == 0; };
+	auto all_players = [](listener_t& l){ return true; };
 
 	std::unique_ptr<listener_t, void(*)(listener_t*)> finalizer(listener.get(), [](listener_t* listener)
 	{
@@ -91,7 +91,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					}
 					else
 					{
-						g_listeners.broadcast(account->get_name() + "%/%p%g writes (private):%x " + message + "%x", [&](listener_t* l){ return l->player->index == cmd.v0; });
+						g_listeners.broadcast(account->get_name() + "%/%p%g writes (private):%x " + message + "%x", [&](listener_t& l){ return l.player->index == cmd.v0; });
 					}
 				}
 				else
@@ -139,7 +139,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						std::string dice = FormatDice(cmd.v1);
 
-						g_listeners.broadcast(account->get_name() + "%/%p throws " + dice + " to you (private)", [&](listener_t* l){ return l->player->index == cmd.v0; });
+						g_listeners.broadcast(account->get_name() + "%/%p throws " + dice + " to you (private)", [&](listener_t& l){ return l.player->index == cmd.v0; });
 						listener->push_text("You throw " + dice + "%/ to " + g_players.get_name_by_index(cmd.v0));
 					}
 				}
@@ -173,7 +173,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				}
 				else if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
 				{
-					account->email = str_t<255>::make(cmd.data, static_cast<u8>(text_size));
+					account->email = str_t<255>(cmd.data, text_size);
 					listener->push_text("E-mail set: " + std::string(account->email.data, account->email.length));
 
 					g_accounts.save();
@@ -383,7 +383,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				if ((account->flags.fetch_or(PF_OFF) & PF_OFF) == 0)
 				{
 					const s32 index = player->index;
-					g_listeners.broadcast(account->get_name() + "%/ is offline.", [=](listener_t* l){ return (l->player->account->flags & PF_OFF) == 0 || l->player->index == index; });
+					g_listeners.broadcast(account->get_name() + "%/ is offline.", [=](listener_t& l){ return (l.player->account->flags & PF_OFF) == 0 || l.player->index == index; });
 					g_listeners.update_player(player);
 				}
 
@@ -441,17 +441,17 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 {
-	auto message = [](socket_t* socket, std::string text)
+	auto message = [](socket_t& socket, std::string text)
 	{
 		const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size));
 
 		ServerTextRec data = { SERVER_TEXT, static_cast<u16>(size + sizeof(double)), GetTime() };
 		memcpy(data.data, text.c_str(), size);
 
-		socket->put(&data, data.size + 3);
+		socket.put(&data, data.size + 3);
 	};
 
-	std::shared_ptr<socket_t> socket(new socket_t(aid));
+	std::shared_ptr<socket_t> socket(new cipher_socket_t(aid, { 32 }));
 
 	// TODO: send public key
 	ProtocolHeader header = { SERVER_AUTH, 0 };
@@ -469,7 +469,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		auth.size != sizeof(ClientAuthRec) - 3)
 	{
 		printf("- %s:%d (II)\n", inet_ntoa(ip), port);
-		message(socket.get(), "Invalid auth packet");
+		message(*socket, "Invalid auth packet");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
@@ -478,7 +478,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	if (auth.name.length > 16 || !IsLoginValid(auth.name.data, auth.name.length))
 	{
 		printf("- %s:%d (III)\n", inet_ntoa(ip), port);
-		message(socket.get(), "Invalid login");
+		message(*socket, "Invalid login");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
@@ -494,7 +494,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	if (!account)
 	{
 		printf("- %s:%d (IV)\n", inet_ntoa(ip), port); // TODO: messages (wrong password)
-		message(socket.get(), "Invalid password");
+		message(*socket, "Invalid password");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
@@ -502,7 +502,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	if (account->flags & PF_NOCONNECT)
 	{
 		printf("- %s:%d (V)\n", inet_ntoa(ip), port);
-		message(socket.get(), "Account is banned");
+		message(*socket, "Account is banned");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
@@ -513,7 +513,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	if (!player)
 	{
 		printf("- %s:%d (VI)\n", inet_ntoa(ip), port);
-		message(socket.get(), "Too many players connected");
+		message(*socket, "Too many players connected");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
@@ -522,7 +522,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	if (!listener)
 	{
 		printf("- %s:%d (VII)\n", inet_ntoa(ip), port);
-		message(socket.get(), "Too many connections");
+		message(*socket, "Too many connections");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}

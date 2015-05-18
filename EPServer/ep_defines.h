@@ -71,18 +71,16 @@ template<u8 N> struct str_t
 	u8 length;
 	char data[size];
 
-	static str_t make(const char* str)
+	str_t()
+		: length(0)
 	{
-		str_t res;
-		memcpy(res.data, str, res.length = static_cast<u8>(std::min<size_t>(strlen(str), N)));
-		return res;
+		memset(data, 0, N);
 	}
 
-	static str_t make(const char* str, u8 len)
+	str_t(const void* ptr, size_t len)
 	{
-		str_t res;
-		memcpy(res.data, str, res.length = len);
-		return res;
+		memcpy(data, ptr, length = static_cast<u8>(std::min<size_t>(len, N)));
+		memset(data + length, 0, N - length);
 	}
 
 	template<u8 N2> bool operator == (str_t<N2>& right) const

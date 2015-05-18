@@ -106,7 +106,7 @@ void listener_list_t::update_player(const std::shared_ptr<player_t>& player)
 	}
 }
 
-void listener_list_t::broadcast(const std::string& text, const std::function<bool(listener_t*)> pred)
+void listener_list_t::broadcast(const std::string& text, const std::function<bool(listener_t&)> pred)
 {
 	const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size)); // text size
 
@@ -122,7 +122,7 @@ void listener_list_t::broadcast(const std::string& text, const std::function<boo
 
 	for (auto& listener : m_list)
 	{
-		if (pred(listener.get()))
+		if (pred(*listener))
 		{
 			listener->push_packet(packet);
 		}

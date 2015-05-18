@@ -8,7 +8,7 @@ PlayerElement player_t::generate_player_element()
 {
 	PlayerElement res = {};
 	res.flags = account->flags;
-	res.name = account->uniq_name.length ? account->uniq_name : str_t<48>::make(account->name.data, account->name.length);
+	res.name = account->uniq_name.length ? account->uniq_name : str_t<48>(account->name.data, account->name.length);
 	res.gindex = -1;
 	return res;
 }

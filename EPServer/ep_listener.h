@@ -43,5 +43,5 @@ public:
 
 	void update_player(const std::shared_ptr<player_t>& player);
 
-	void broadcast(const std::string& text, const std::function<bool(listener_t*)> pred);
+	void broadcast(const std::string& text, const std::function<bool(listener_t&)> pred);
 };

@@ -55,7 +55,7 @@ rc6_cipher_t::~rc6_cipher_t()
 	m_dec_last = {};
 }
 
-void rc6_cipher_t::encrypt_cbc(rc6_block_t& block)
+void rc6_cipher_t::encrypt_block_cbc(rc6_block_t& block)
 {
 	// CBC initialization
 	block.vi = _mm_xor_si128(block.vi, m_enc_last.vi);
@@ -79,9 +79,9 @@ void rc6_cipher_t::encrypt_cbc(rc6_block_t& block)
 	m_enc_last = block;
 }
 
-void rc6_cipher_t::decrypt_cbc(rc6_block_t& block)
+void rc6_cipher_t::decrypt_block_cbc(rc6_block_t& block)
 {
-	auto saved = block;
+	const rc6_block_t encrypted = block;
 
 	block.i[0] -= m_s[rounds * 2 + 2];
 	block.i[2] -= m_s[rounds * 2 + 3];
@@ -102,5 +102,5 @@ void rc6_cipher_t::decrypt_cbc(rc6_block_t& block)
 	// CBC finalization
 	block.vi = _mm_xor_si128(block.vi, m_dec_last.vi);
 
-	m_dec_last = saved;
+	m_dec_last = encrypted;
 }
