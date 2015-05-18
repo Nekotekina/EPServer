@@ -1,12 +1,14 @@
 ﻿#pragma once
 
 // MD5 hash container
-using md5_t = std::array<u8, 16>;
+using md5_t = std::array<unsigned char, 16>;
+
+static_assert(sizeof(md5_t) == 16, "Invalid md5_t size");
 
 // Data packet data
 class packet_data_t
 {
-	std::unique_ptr<u8[]> m_data;
+	std::unique_ptr<char[]> m_data;
 	u32 m_size = 0;
 
 public:
@@ -14,8 +16,8 @@ public:
 	{
 	}
 
-	packet_data_t(u32 size)
-		: m_data(new u8[size])
+	explicit packet_data_t(u32 size)
+		: m_data(new char[size])
 		, m_size(size)
 	{
 	}
@@ -44,9 +46,16 @@ public:
 		memset(m_data.get(), 0, m_size); // burn
 	}
 
-	u8* get() const
+	void reset(u32 size)
 	{
-		return m_data.get();
+		m_data.reset(size ? new char[size] : nullptr);
+		m_size = size;
+	}
+
+	template<typename T = char>
+	T* get() const
+	{
+		return reinterpret_cast<T*>(m_data.get());
 	}
 
 	u32 size() const
@@ -61,34 +70,35 @@ using packet_t = std::shared_ptr<packet_data_t>;
 // Server identifier (UTF8 string)
 static const auto vers = "EPClient v0.16";
 
-// Pascal string type (used in some structs)
-template<u8 N> struct str_t
+// Pascal short string type (used in some structs)
+template<u8 N = 255> struct short_str_t
 {
-	static_assert(N, "Invalid str_t size");
+	static_assert(N, "Invalid short_str_t size");
 
 	static const u8 size = N;
 
 	u8 length;
 	char data[size];
 
-	str_t()
-		: length(0)
+	static short_str_t make(const void* ptr, size_t len)
 	{
-		memset(data, 0, N);
+		short_str_t res;
+		memcpy(res.data, ptr, res.length = static_cast<u8>(std::min<size_t>(len, N)));
+		memset(res.data + res.length, 0, N - res.length);
+		return res;
 	}
 
-	str_t(const void* ptr, size_t len)
+	template<u8 N2> operator short_str_t<N2>() const
 	{
-		memcpy(data, ptr, length = static_cast<u8>(std::min<size_t>(len, N)));
-		memset(data + length, 0, N - length);
+		return short_str_t<N2>::make(data, length);
 	}
 
-	template<u8 N2> bool operator == (str_t<N2>& right) const
+	template<u8 N2> bool operator ==(const short_str_t<N2>& right) const
 	{
 		return length == right.length && memcmp(data, right.data, length) == 0;
 	}
 
-	size_t save(std::FILE* f)
+	size_t save(std::FILE* f) const
 	{
 		size_t res = 0;
 		res += std::fwrite(&length, sizeof(length), 1, f);
@@ -151,34 +161,28 @@ struct ProtocolHeader
 	u16 size;
 };
 
-struct ClientAuthRec
+struct ClientAuthRec // doesn't include ProtocolHeader
 {
-	u8 code;
-	u16 size;
-	str_t<16> name;
+	short_str_t<16> name;
 	md5_t pass; // md5(md5(password))
 };
 
-struct SecureAuthRec
+struct SecureAuthRec // doesn't include ProtocolHeader
 {
-	u8 code;
-	u16 size;
-	str_t<16> name;
-	md5_t pass; // md5(md5(password))
-	u8 ckey[32]; // session key
+	ClientAuthRec info;
+	char ckey[32]; // session key
 };
 
 struct ServerTextRec
 {
 	static const u16 max_data_size = 65527;
 
-	u8 code;
-	u16 size;
+	ProtocolHeader header;
 	f64 stamp; // message timestamp (OLE automation time)
 	char data[max_data_size]; // utf-8 text
 };
 
-struct ClientCmdRec
+struct ClientCmdRec // doesn't include ProtocolHeader
 {
 	static const u16 max_data_size = 65521;
 
@@ -191,14 +195,13 @@ struct ClientCmdRec
 
 struct ServerVersionRec
 {
-	u8 code;
-	u16 size;
-	str_t<30> data;
+	ProtocolHeader header;
+	short_str_t<30> data;
 };
 
 struct PlayerElement
 {
-	str_t<48> name;
+	short_str_t<48> name;
 	u64 flags;
 	s32 gindex;
 };
@@ -207,8 +210,7 @@ static const size_t MAX_PLAYERS = 65527 / sizeof(PlayerElement);
 
 struct ServerListRec
 {
-	u8 code;
-	u16 size;
+	ProtocolHeader header;
 	s32 self;
 	s32 count;
 	PlayerElement data[MAX_PLAYERS];
@@ -216,8 +218,7 @@ struct ServerListRec
 
 struct ServerUpdatePlayer
 {
-	u8 code;
-	u16 size;
+	ProtocolHeader header;
 	s32 index;
 	PlayerElement data;
 };

@@ -4,13 +4,13 @@
 class account_t final
 {
 public:
-	str_t<16> name;
+	short_str_t<16> name;
 
 	md5_t pass;
 	std::atomic<u64> flags;
 
-	str_t<48> uniq_name;
-	str_t<255> email;
+	short_str_t<48> uniq_name;
+	short_str_t<255> email;
 
 	void save(std::FILE* f);
 	void load(std::FILE* f);
@@ -30,5 +30,10 @@ public:
 	bool save();
 	bool load();
 
-	std::shared_ptr<account_t> add_account(str_t<16> name, md5_t pass);
+	std::shared_ptr<account_t> add_account(short_str_t<16> name, md5_t pass);
+
+	size_t size() const
+	{
+		return m_list.size();
+	}
 };

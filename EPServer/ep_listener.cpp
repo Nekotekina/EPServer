@@ -30,9 +30,9 @@ void listener_t::push_text(const std::string& text)
 
 	packet_t packet(new packet_data_t(size + 11));
 
-	auto data = reinterpret_cast<ServerTextRec*>(packet->get());
-	data->code = SERVER_TEXT;
-	data->size = size + sizeof(f64);
+	auto data = packet->get<ServerTextRec>();
+	data->header.code = SERVER_TEXT;
+	data->header.size = size + sizeof(f64);
 	data->stamp = GetTime();
 	memcpy(data->data, text.c_str(), size);
 
@@ -92,9 +92,9 @@ void listener_list_t::update_player(const std::shared_ptr<player_t>& player)
 {
 	packet_t packet(new packet_data_t(sizeof(ServerUpdatePlayer)));
 
-	auto data = reinterpret_cast<ServerUpdatePlayer*>(packet->get());
-	data->code = SERVER_PUPDATE;
-	data->size = sizeof(ServerUpdatePlayer) - 3;
+	auto data = packet->get<ServerUpdatePlayer>();
+	data->header.code = SERVER_PUPDATE;
+	data->header.size = sizeof(ServerUpdatePlayer) - 3;
 	data->index = player->index;
 	data->data = player->generate_player_element();
 
@@ -112,9 +112,9 @@ void listener_list_t::broadcast(const std::string& text, const std::function<boo
 
 	packet_t packet(new packet_data_t(size + 11));
 
-	auto data = reinterpret_cast<ServerTextRec*>(packet->get());
-	data->code = SERVER_TEXT;
-	data->size = size + sizeof(f64);
+	auto data = packet->get<ServerTextRec>();
+	data->header.code = SERVER_TEXT;
+	data->header.size = size + sizeof(f64);
 	data->stamp = GetTime();
 	memcpy(data->data, text.c_str(), size);
 

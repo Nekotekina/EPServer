@@ -8,7 +8,9 @@ PlayerElement player_t::generate_player_element()
 {
 	PlayerElement res = {};
 	res.flags = account->flags;
-	res.name = account->uniq_name.length ? account->uniq_name : str_t<48>(account->name.data, account->name.length);
+	account->uniq_name.length
+			? res.name = account->uniq_name
+			: res.name = account->name;
 	res.gindex = -1;
 	return res;
 }
@@ -62,21 +64,26 @@ bool player_list_t::remove_player(u32 index)
 	return false;
 }
 
-void player_list_t::generate_player_list(ServerListRec& plist, u32 self)
+packet_data_t player_list_t::generate_player_list(u32 self)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	plist.code = SERVER_PLIST;
-	plist.size = static_cast<u16>(8 + sizeof(PlayerElement) * m_list.size());
-	plist.self = self;
-	plist.count = static_cast<u32>(m_list.size());
+	packet_data_t packet(static_cast<u32>(11 + sizeof(PlayerElement) * m_list.size()));
+
+	auto data = packet.get<ServerListRec>();
+	data->header.code = SERVER_PLIST;
+	data->header.size = static_cast<u16>(8 + sizeof(PlayerElement) * m_list.size());
+	data->self = self;
+	data->count = static_cast<u32>(m_list.size());
 
 	PlayerElement empty = { {}, 0, -1 };
 
 	for (u32 i = 0; i < m_list.size(); i++)
 	{
-		plist.data[i] = m_list[i] ? m_list[i]->generate_player_element() : empty;
+		data->data[i] = m_list[i] ? m_list[i]->generate_player_element() : empty;
 	}
+
+	return packet;
 }
 
 std::string player_list_t::get_name_by_index(u32 index)

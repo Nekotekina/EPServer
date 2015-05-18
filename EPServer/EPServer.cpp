@@ -6,12 +6,15 @@
 #include "ep_listener.h"
 #include "hl_md5.h"
 
-const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, str_t<30>(vers, strlen(vers)) };
+const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(vers, strlen(vers)) };
 
 account_list_t g_accounts;
 player_list_t g_players;
 listener_list_t g_listeners;
-cipher_socket_t g_server(INVALID_SOCKET, { 64 }); // test
+socket_t g_server;
+
+packet_data_t g_auth_packet(3);
+packet_data_t g_priv_key;
 
 void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t> account, std::shared_ptr<player_t> player, std::shared_ptr<listener_t> listener)
 {
@@ -173,7 +176,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				}
 				else if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
 				{
-					account->email = str_t<255>(cmd.data, text_size);
+					account->email = short_str_t<>::make(cmd.data, text_size);
 					listener->push_text("E-mail set: " + std::string(account->email.data, account->email.length));
 
 					g_accounts.save();
@@ -404,9 +407,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			case SCMD_REFRESH:
 			{
 				// Update player list (isn't really used)
-				ServerListRec plist;
-				g_players.generate_player_list(plist, player->index);
-				listener->push(&plist, plist.size + 3);
+				listener->push_packet(packet_t(new packet_data_t(std::move(g_players.generate_player_list(player->index)))));
 
 				std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 				break;
@@ -448,55 +449,78 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		ServerTextRec data = { SERVER_TEXT, static_cast<u16>(size + sizeof(double)), GetTime() };
 		memcpy(data.data, text.c_str(), size);
 
-		socket.put(&data, data.size + 3);
+		socket.put(&data, data.header.size + 3);
 	};
 
-	std::shared_ptr<socket_t> socket(new socket_t(aid));
-
-	// TODO: send public key
-	ProtocolHeader header = { SERVER_AUTH, 0 };
-	if (send(aid, (char*)&header, sizeof(ProtocolHeader), 0) != sizeof(ProtocolHeader))
+	if (send(aid, g_auth_packet.get(), g_auth_packet.size(), 0) != g_auth_packet.size())
 	{
+		socket_t socket(aid);
 		printf("- %s:%d (I)\n", inet_ntoa(ip), port);
-		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
+		socket.put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
 
-	// TODO: accept encrypted auth
-	ClientAuthRec auth;
-	if (recv(aid, (char*)&auth, sizeof(ClientAuthRec), MSG_WAITALL) != sizeof(ClientAuthRec) ||
-		auth.code != CLIENT_AUTH ||
-		auth.size != sizeof(ClientAuthRec) - 3)
-	{
-		printf("- %s:%d (II)\n", inet_ntoa(ip), port);
-		message(*socket, "Invalid auth packet");
-		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
-		return;
-	}
+	std::shared_ptr<socket_t> socket;
 
-	// check login
-	if (auth.name.length > 16 || !IsLoginValid(auth.name.data, auth.name.length))
-	{
-		printf("- %s:%d (III)\n", inet_ntoa(ip), port);
-		message(*socket, "Invalid login");
-		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
-		return;
-	}
+	std::shared_ptr<account_t> account;
 
-	// prepare password
-	HL_MD5_CTX ctx;
-	MD5().MD5Init(&ctx);
-	MD5().MD5Update(&ctx, auth.pass.data(), 16); // calculate md5 from md5(password) arrived
-	MD5().MD5Final(auth.pass.data(), &ctx);
-
-	// find or create account
-	std::shared_ptr<account_t> account = g_accounts.add_account(auth.name, auth.pass);
-	if (!account)
 	{
-		printf("- %s:%d (IV)\n", inet_ntoa(ip), port); // TODO: messages (wrong password)
-		message(*socket, "Invalid password");
-		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
-		return;
+		packet_data_t auth_info;
+
+		ProtocolHeader header;
+
+		// validate auth packet content
+		if (recv(aid, (char*)&header, 3, MSG_WAITALL) != 3 ||
+			(header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec) - 3) &&
+			(g_priv_key.size() == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_priv_key.size()) ||
+			(auth_info.reset(header.size), recv(aid, auth_info.get(), header.size, MSG_WAITALL) != header.size))
+		{
+			socket_t socket(aid);
+			printf("- %s:%d (II)\n", inet_ntoa(ip), port);
+			message(socket, "Invalid auth packet");
+			socket.put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
+			return;
+		}
+
+		// select auth mode
+		if (header.code == CLIENT_SECURE_AUTH)
+		{
+			packet_data_t key(32);
+
+			// TODO
+
+			socket.reset(new cipher_socket_t(aid, std::move(key)));
+		}
+		else
+		{
+			socket.reset(new socket_t(aid)); // simple socket
+		}
+
+		auto auth = auth_info.get<ClientAuthRec>();
+
+		// check login
+		if (auth->name.length > 16 || !IsLoginValid(auth->name.data, auth->name.length))
+		{
+			printf("- %s:%d (III)\n", inet_ntoa(ip), port);
+			message(*socket, "Invalid login");
+			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
+			return;
+		}
+
+		// prepare password
+		HL_MD5_CTX ctx;
+		MD5().MD5Init(&ctx);
+		MD5().MD5Update(&ctx, auth->pass.data(), 16); // calculate md5 from md5(password) arrived
+		MD5().MD5Final(auth->pass.data(), &ctx);
+
+		// find or create account
+		if (!(account = g_accounts.add_account(auth->name, auth->pass)))
+		{
+			printf("- %s:%d (IV)\n", inet_ntoa(ip), port); // TODO: messages (wrong password)
+			message(*socket, "Invalid password");
+			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
+			return;
+		}
 	}
 
 	if (account->flags & PF_NOCONNECT)
@@ -536,10 +560,9 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	account->flags &= ~PF_LOST; // remove PF_LOST flag (TODO)
 
 	{
-		ServerListRec plist;
-		g_players.generate_player_list(plist, player->index);
+		const packet_data_t plist = g_players.generate_player_list(player->index);
 
-		if (!socket->put(version_info) || !socket->put(&plist, plist.size + 3))
+		if (!socket->put(version_info) || !socket->put(plist.get(), plist.size()))
 		{
 			printf("- %s:%d (VIII)\n", inet_ntoa(ip), port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
@@ -555,7 +578,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	// start sending packets
 	while (auto packet = listener->pop())
 	{
-		if (!socket->put(packet->get(), packet->size()))
+		if (!socket->put(packet->get<void>(), packet->size()))
 		{
 			printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
@@ -570,12 +593,56 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 int main()
 {
-	printf("EPServer version: %s\n", vers);
+	printf("EPServer version: '%s'\n", vers);
 
-	g_accounts.load();
-	g_accounts.save(); // TODO: remove
+	printf("ipv4.dat not loaded!\n"); // TODO: load IP db
+	printf("ipv6.dat not loaded!\n"); // TODO: IPv6 support
 
-	printf("EPServer initialization...\n");
+	g_accounts.load(); // load account info
+
+	printf("accounts: %d\n", g_accounts.size());
+
+	if (auto f = std::fopen("auth.dat", "r"))
+	{
+		std::fseek(f, 0, SEEK_END);
+		const u32 size = std::ftell(f);
+
+		g_auth_packet.reset(3 + size);
+		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(size) };
+
+		std::fseek(f, 0, SEEK_SET);
+		std::fread(g_auth_packet.get() + 3, 1, size, f);
+
+		std::fclose(f);
+
+		printf("auth.dat size: %d\n", size);
+	}
+	else
+	{
+		g_auth_packet.reset(3);
+		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH };
+
+		printf("auth.dat not found!\n");
+	}
+
+	if (auto f = std::fopen("key.dat", "r"))
+	{
+		std::fseek(f, 0, SEEK_END);
+		const u32 size = std::ftell(f);
+
+		g_priv_key.reset(size);
+
+		std::fseek(f, 0, SEEK_SET);
+		std::fread(g_auth_packet.get(), 1, size, f);
+
+		std::fclose(f);
+
+		printf("key.dat size: %d\n", size);
+	}
+	else
+	{
+		printf("key.dat not found!\n");
+	}
 
 #ifdef _WIN32
 	WSADATA wsa_info = {};
@@ -592,7 +659,7 @@ int main()
 	});
 #endif
 
-	auto sid = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	socket_id_t sid = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sid == INVALID_SOCKET)
 	{
 		printf("socket() failed: 0x%x\n", GETERROR);
@@ -622,7 +689,7 @@ int main()
 	{
 		// accept connection
 		socklen_t size = sizeof(sockaddr_in);
-		auto aid = accept(sid, (sockaddr*)&info, &size);
+		socket_id_t aid = accept(sid, (sockaddr*)&info, &size);
 		if (aid == INVALID_SOCKET)
 		{
 			printf("accept() returned 0x%x\n", GETERROR);

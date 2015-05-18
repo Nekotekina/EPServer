@@ -73,7 +73,7 @@ public:
 	// send data
 	virtual bool put(const void* data, u32 size)
 	{
-		return send(socket, reinterpret_cast<const char*>(data), size, 0) == size;
+		return send(socket, static_cast<const char*>(data), size, 0) == size;
 	}
 
 	// send data
@@ -85,7 +85,7 @@ public:
 	// receive data
 	virtual bool get(void* data, u32 size)
 	{
-		return recv(socket, reinterpret_cast<char*>(data), size, MSG_WAITALL) == size;
+		return recv(socket, static_cast<char*>(data), size, MSG_WAITALL) == size;
 	}
 
 	// receive data
@@ -112,12 +112,13 @@ class cipher_socket_t : public socket_t
 {
 protected:
 	rc6_cipher_t m_cipher;
-	str_t<15> m_received;
+	short_str_t<15> m_received;
 
 public:
 	cipher_socket_t(socket_id_t socket, packet_data_t key)
 		: socket_t(socket)
 		, m_cipher(std::move(key))
+		, m_received({})
 	{
 	}
 
@@ -150,7 +151,7 @@ public:
 		if (const u32 read = std::min<u32>(m_received.length, size))
 		{
 			memcpy(data, m_received.data, read);
-			m_received = str_t<15>(m_received.data + read, m_received.length - read); // shrink saved data
+			m_received = short_str_t<15>::make(m_received.data + read, m_received.length - read); // shrink saved data
 
 			size -= read;
 			data = static_cast<u8*>(data) + read;
@@ -172,7 +173,7 @@ public:
 			}
 			
 			memcpy(data, buf.get(), size);
-			m_received = str_t<15>(reinterpret_cast<u8*>(buf.get()) + size, asize - size); // save exceeded data
+			m_received = short_str_t<15>::make(reinterpret_cast<u8*>(buf.get()) + size, asize - size); // save exceeded data
 
 			memset(buf.get(), 0, asize); // burn
 		}

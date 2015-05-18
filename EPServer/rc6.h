@@ -6,6 +6,26 @@ union rc6_block_t
 {
 	u32 i[4];
 	__m128i vi;
+
+	void* operator new(size_t size)
+	{
+		return _mm_malloc(size, __alignof(rc6_block_t));
+	}
+
+	void* operator new[](size_t size)
+	{
+		return _mm_malloc(size, __alignof(rc6_block_t));
+	}
+
+	void operator delete(void* p)
+	{
+		return _mm_free(p);
+	}
+
+	void operator delete[](void* p)
+	{
+		return _mm_free(p);
+	}
 };
 
 class rc6_cipher_t final
@@ -27,7 +47,7 @@ class rc6_cipher_t final
 	rc6_block_t m_dec_last;
 
 public:
-	rc6_cipher_t(packet_data_t key);
+	explicit rc6_cipher_t(packet_data_t key);
 	~rc6_cipher_t();
 
 	void encrypt_block_cbc(rc6_block_t& block);

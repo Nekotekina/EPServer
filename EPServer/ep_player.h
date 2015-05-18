@@ -1,9 +1,7 @@
 #pragma once
+#include "ep_defines.h"
 
 class account_t;
-
-struct ServerListRec;
-struct PlayerElement;
 
 class player_t final
 {
@@ -24,7 +22,7 @@ public:
 
 	bool remove_player(u32 index);
 
-	void generate_player_list(ServerListRec& plist, u32 self);
+	packet_data_t generate_player_list(u32 self);
 
 	std::string get_name_by_index(u32 index);
 };

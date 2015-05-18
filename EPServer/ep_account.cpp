@@ -44,7 +44,7 @@ bool account_list_t::save()
 
 	if (!f)
 	{
-		// TODO: check error
+		printf("account.dat writing failed!");
 		return false;
 	}
 
@@ -68,7 +68,7 @@ bool account_list_t::load()
 
 	if (!f)
 	{
-		// TODO: check error
+		printf("account.dat not found!\n");
 		return false;
 	}
 
@@ -86,7 +86,7 @@ bool account_list_t::load()
 	return true;
 }
 
-std::shared_ptr<account_t> account_list_t::add_account(str_t<16> name, md5_t pass)
+std::shared_ptr<account_t> account_list_t::add_account(short_str_t<16> name, md5_t pass)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
