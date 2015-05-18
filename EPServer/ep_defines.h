@@ -68,7 +68,7 @@ public:
 using packet_t = std::shared_ptr<packet_data_t>;
 
 // Server identifier (UTF8 string)
-static const auto vers = "EPClient v0.16";
+static const auto ep_version = "EPClient v0.16";
 
 // Pascal short string type (used in some structs)
 template<u8 N = 255> struct short_str_t
@@ -101,7 +101,7 @@ template<u8 N = 255> struct short_str_t
 	size_t save(std::FILE* f) const
 	{
 		size_t res = 0;
-		res += std::fwrite(&length, sizeof(length), 1, f);
+		res += std::fwrite(&length, 1, sizeof(length), f);
 		res += std::fwrite(data, 1, length, f);
 		return res;
 	}
@@ -110,7 +110,7 @@ template<u8 N = 255> struct short_str_t
 	{
 		*this = {};
 		size_t res = 0;
-		res += std::fread(&length, sizeof(length), 1, f);
+		res += std::fread(&length, 1, sizeof(length), f);
 		res += std::fread(data, 1, length, f);
 		return res;
 	}

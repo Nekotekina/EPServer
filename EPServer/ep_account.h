@@ -13,7 +13,7 @@ public:
 	short_str_t<255> email;
 
 	void save(std::FILE* f);
-	void load(std::FILE* f);
+	bool load(std::FILE* f);
 
 	std::string get_name()
 	{

@@ -6,7 +6,7 @@
 #include "ep_listener.h"
 #include "hl_md5.h"
 
-const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(vers, strlen(vers)) };
+const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(ep_version, strlen(ep_version)) };
 
 account_list_t g_accounts;
 player_list_t g_players;
@@ -593,7 +593,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 int main()
 {
-	printf("EPServer version: '%s'\n", vers);
+	printf("EPServer version: '%s'\n", ep_version);
 
 	printf("ipv4.dat not loaded!\n"); // TODO: load IP db
 	printf("ipv6.dat not loaded!\n"); // TODO: IPv6 support
@@ -602,18 +602,16 @@ int main()
 
 	printf("accounts: %d\n", g_accounts.size());
 
-	if (auto f = std::fopen("auth.dat", "r"))
+	if (unique_FILE f{ std::fopen("auth.dat", "r") })
 	{
-		std::fseek(f, 0, SEEK_END);
-		const u32 size = std::ftell(f);
+		std::fseek(f.get(), 0, SEEK_END);
+		const u32 size = std::ftell(f.get());
 
 		g_auth_packet.reset(3 + size);
 		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(size) };
 
-		std::fseek(f, 0, SEEK_SET);
-		std::fread(g_auth_packet.get() + 3, 1, size, f);
-
-		std::fclose(f);
+		std::fseek(f.get(), 0, SEEK_SET);
+		std::fread(g_auth_packet.get() + 3, 1, size, f.get());
 
 		printf("auth.dat size: %d\n", size);
 	}
@@ -625,17 +623,17 @@ int main()
 		printf("auth.dat not found!\n");
 	}
 
-	if (auto f = std::fopen("key.dat", "r"))
+	if (unique_FILE f{ std::fopen("key.dat", "r") })
 	{
-		std::fseek(f, 0, SEEK_END);
-		const u32 size = std::ftell(f);
+		std::fseek(f.get(), 0, SEEK_END);
+		const u32 size = std::ftell(f.get());
 
 		g_priv_key.reset(size);
 
-		std::fseek(f, 0, SEEK_SET);
-		std::fread(g_auth_packet.get(), 1, size, f);
+		std::fseek(f.get(), 0, SEEK_SET);
+		std::fread(g_auth_packet.get(), 1, size, f.get());
 
-		std::fclose(f);
+		std::fclose(f.get());
 
 		printf("key.dat size: %d\n", size);
 	}

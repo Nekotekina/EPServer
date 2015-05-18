@@ -37,3 +37,13 @@ using s64 = int64_t;
 
 using f32 = float;
 using f64 = double;
+
+struct FILE_deleter
+{
+	void operator()(std::FILE* f) const
+	{
+		std::fclose(f);
+	}
+};
+
+using unique_FILE = std::unique_ptr<std::FILE, FILE_deleter>;
