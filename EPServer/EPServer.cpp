@@ -13,7 +13,7 @@ player_list_t g_players;
 listener_list_t g_listeners;
 socket_t g_server;
 
-packet_data_t g_auth_packet(3);
+packet_data_t g_auth_packet;
 packet_data_t g_priv_key;
 
 void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t> account, std::shared_ptr<player_t> player, std::shared_ptr<listener_t> listener)
@@ -471,7 +471,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 		// validate auth packet content
 		if (recv(aid, (char*)&header, 3, MSG_WAITALL) != 3 ||
-			(header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec) - 3) &&
+			(header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
 			(g_priv_key.size() == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_priv_key.size()) ||
 			(auth_info.reset(header.size), recv(aid, auth_info.get(), header.size, MSG_WAITALL) != header.size))
 		{

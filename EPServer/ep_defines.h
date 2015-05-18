@@ -279,7 +279,7 @@ enum PlayerFlags : u64
 	PF_NEW_PLAYER = 1ull << 10,
 };
 
-static const char* FlagName[] =
+static const char* const FlagName[] =
 {
 	"moderator",
 	"offline",
@@ -298,23 +298,31 @@ static const char* FlagName[] =
 	"???", "???", "???", "???", "???", "???", "???", "???",
 };
 
-static std::string FormatDice(s32 data)
+static std::string FormatDice(const s32 data)
 {
 	struct DiceData
 	{
 		u8 count; // dice count
 		u8 size; // dice size
 		s16 add; // dice modifier
-
-	}& dice = reinterpret_cast<DiceData&>(data);
+	}
+	const dice = reinterpret_cast<const DiceData&>(data);
 
 	s32 res = dice.add;
+
 	for (u32 i = 0; i < dice.count; i++)
 	{
 		res += rand() % dice.size + 1;
 	}
 
-	return std::to_string((s32)dice.count) + "d" + std::to_string((s32)dice.size) + " = " + std::to_string(res);
+	auto format_add = [](int add) -> std::string
+	{
+		if (add < 0) return std::to_string(add);
+		if (add > 0) return "+" + std::to_string(add);
+		return std::string();
+	};
+
+	return std::to_string(dice.count) + "d" + std::to_string(dice.size) + format_add(dice.add) + " = " + std::to_string(res);
 }
 
 static bool IsLoginValid(const char* str, size_t len)
