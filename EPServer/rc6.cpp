@@ -45,8 +45,8 @@ rc6_cipher_t::rc6_cipher_t(packet_data_t key)
 
 	for (u32 i = 0, j = 0, k = 0, A = 0, B = 0; k < 3 * std::max<u32>(minlen, keylen); k++)
 	{
-		A = m_s[i] = rol32(m_s[i] + A + B, 3);
-		B = L[j] = rol32(L[j] + A + B, A + B);
+		A = m_s[i] = rol32((m_s[i] + A + B), 3);
+		B = L[j] = rol32(L[j] + A + B, (A + B));
 		i = (i + 1) % keylen;
 		j = (j + 1) % minlen;
 	}

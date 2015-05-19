@@ -57,7 +57,7 @@ bool player_list_t::remove_player(u32 index)
 
 	if (index < m_list.size() && m_list[index])
 	{
-		m_list[index] = nullptr;
+		m_list[index].reset();
 		return true;
 	}
 

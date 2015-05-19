@@ -5,6 +5,7 @@
 #include "ep_player.h"
 #include "ep_listener.h"
 #include "hl_md5.h"
+#include <mpirxx.h>
 
 const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(ep_version, strlen(ep_version)) };
 
@@ -13,8 +14,10 @@ player_list_t g_players;
 listener_list_t g_listeners;
 socket_t g_server;
 
-packet_data_t g_auth_packet;
-packet_data_t g_priv_key;
+packet_data_t g_auth_packet; // open key + sign
+mpz_class g_key_n; // open key
+mpz_class g_key_d; // priv key
+u32 g_key_size = 0; // key size (bytes)
 
 void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t> account, std::shared_ptr<player_t> player, std::shared_ptr<listener_t> listener)
 {
@@ -472,7 +475,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		// validate auth packet content
 		if (recv(aid, (char*)&header, 3, MSG_WAITALL) != 3 ||
 			(header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
-			(g_priv_key.size() == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_priv_key.size()) ||
+			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
 			(auth_info.reset(header.size), recv(aid, auth_info.get(), header.size, MSG_WAITALL) != header.size))
 		{
 			socket_t socket(aid);
@@ -487,7 +490,30 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		{
 			packet_data_t key(32);
 
-			// TODO
+			mpz_class num = 0u;
+
+			for (u32 i = 0; i < g_key_size; i++) // convert from base 256
+			{
+				num <<= 8;
+				num += auth_info.get<u8>()[i];
+			}
+
+			mpz_powm(num.get_mpz_t(), num.get_mpz_t(), g_key_d.get_mpz_t(), g_key_n.get_mpz_t()); // decrypt
+
+			for (u32 i = g_key_size - 1; ~i; i--) // convert to base 256
+			{
+				auth_info.get<u8>()[i] = static_cast<u8>(num.get_ui());
+				num >>= 8;
+				
+				if (num == 0)
+				{
+					memmove(auth_info.get(), auth_info.get() + i, g_key_size - i); // fix data displacement
+					memset(auth_info.get() + (g_key_size - i), 0, i);
+					break;
+				}
+			}
+
+			memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size()); // copy session key
 
 			socket.reset(new cipher_socket_t(aid, std::move(key)));
 		}
@@ -602,45 +628,83 @@ int main()
 
 	printf("accounts: %d\n", g_accounts.size());
 
-	if (unique_FILE f{ std::fopen("auth.dat", "r") })
-	{
-		std::fseek(f.get(), 0, SEEK_END);
-		const u32 size = std::ftell(f.get());
-
-		g_auth_packet.reset(3 + size);
-		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(size) };
-
-		std::fseek(f.get(), 0, SEEK_SET);
-		std::fread(g_auth_packet.get() + 3, 1, size, f.get());
-
-		printf("auth.dat size: %d\n", size);
-	}
-	else
-	{
-		g_auth_packet.reset(3);
-		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH };
-
-		printf("auth.dat not found!\n");
-	}
-
 	if (unique_FILE f{ std::fopen("key.dat", "r") })
 	{
+		// get file size
 		std::fseek(f.get(), 0, SEEK_END);
 		const u32 size = std::ftell(f.get());
 
-		g_priv_key.reset(size);
-
+		// get file content
+		packet_data_t keys(size + 1);
 		std::fseek(f.get(), 0, SEEK_SET);
-		std::fread(g_auth_packet.get(), 1, size, f.get());
+		std::fread(keys.get(), 1, size, f.get());
 
-		std::fclose(f.get());
+		// data pointer
+		char* ptr = keys.get();
+		
+		// string pointers
+		std::vector<char*> strings = { ptr };
 
-		printf("key.dat size: %d\n", size);
+		// add null character
+		ptr[size] = 0;
+
+		// make null-terminated strings in buffer
+		for (u32 i = 0; i < size; i++)
+		{
+			if (!isdigit(ptr[i]))
+			{
+				ptr[i] = 0;
+
+				if (isdigit(ptr[i + 1]))
+				{
+					strings.emplace_back(ptr + i + 1);
+				}
+			}
+		}
+
+		if (strings.size() != 5)
+		{
+			printf("key.dat is invalid!\n");
+		}
+		else
+		{
+			// load values
+			mpz_class key_e(strings[0], 10);
+			mpz_class key_p(strings[1], 10);
+			mpz_class key_q(strings[2], 10);
+			mpz_class key_n(strings[3], 10);
+			mpz_class key_s(strings[4], 10);
+
+			// set open key
+			g_key_n = key_n;
+
+			// calculate priv key
+			g_key_d = (key_p - 1) * (key_q - 1);
+			mpz_invert(g_key_d.get_mpz_t(), key_e.get_mpz_t(), g_key_d.get_mpz_t());
+
+			// set rough key size
+			g_key_size = static_cast<u32>(mpz_size(g_key_d.get_mpz_t()) * sizeof(mp_limb_t));
+
+			// prepare auth packet
+			g_auth_packet.reset(3 + g_key_size * 2);
+			*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(g_key_size * 2) };
+
+			// convert to base 256
+			for (u32 i = g_key_size - 1; ~i; i--)
+			{
+				g_auth_packet.get<u8>()[i + 3] = static_cast<u8>(key_n.get_ui());
+				g_auth_packet.get<u8>()[i + g_key_size + 3] = static_cast<u8>(key_s.get_ui());
+				key_n >>= 8;
+				key_s >>= 8;
+			}
+		}
 	}
 	else
 	{
 		printf("key.dat not found!\n");
 	}
+
+	printf("key size: %d\n", g_key_size * 8);
 
 #ifdef _WIN32
 	WSADATA wsa_info = {};
