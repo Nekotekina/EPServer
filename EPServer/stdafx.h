@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <cstddef>
 #include <cstring>
 #include <ctime>
 #include <sys/stat.h>
