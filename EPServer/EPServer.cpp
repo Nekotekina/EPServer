@@ -646,8 +646,16 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 }
 
+#ifdef __unix__
+#include <X11/Xlib.h>
+#endif
+
 int main(int arg_count, const char* args[])
 {
+#ifdef __unix__
+	XInitThreads();
+#endif
+
 	printf("EPServer version: '%s'\n", ep_version);
 
 	printf("ipv4.dat not loaded!\n"); // TODO: load IP db
