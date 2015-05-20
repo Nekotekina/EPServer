@@ -27,7 +27,7 @@ bool account_t::load(std::FILE* f)
 
 	size_t read = 0;
 
-	auto _flags = flags.load(std::memory_order_relaxed);
+	u64 _flags;
 	read += std::fread(&_flags, 1, sizeof(_flags), f);
 	flags.store(_flags, std::memory_order_relaxed);
 	read += std::fread(pass.data(), 1, pass.size(), f);
@@ -79,7 +79,7 @@ bool account_list_t::load()
 		return false;
 	}
 
-	while (true)
+	while (!std::feof(f.get()))
 	{
 		std::shared_ptr<account_t> acc(new account_t);
 
