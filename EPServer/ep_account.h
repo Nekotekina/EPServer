@@ -32,8 +32,8 @@ public:
 
 	std::shared_ptr<account_t> add_account(short_str_t<16> name, md5_t pass);
 
-	size_t size() const
+	u32 size() const
 	{
-		return m_list.size();
+		return static_cast<u32>(m_list.size());
 	}
 };

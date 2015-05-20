@@ -655,7 +655,7 @@ int main()
 
 	g_accounts.load(); // load account info
 
-	printf("accounts: %llu\n", static_cast<u64>(g_accounts.size()));
+	printf("accounts: %d\n", static_cast<u32>(g_accounts.size()));
 
 	if (unique_FILE f{ std::fopen("key.dat", "r") })
 	{
