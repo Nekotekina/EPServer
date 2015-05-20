@@ -9,7 +9,7 @@ if (WIN32)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	set(CMAKE_CXX_FLAGS "$(CMAKE_CXX_FLAGS} -lX11")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lX11")
 endif()
 
 add_definitions(-msse -msse2 -mssse3)
