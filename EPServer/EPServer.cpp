@@ -38,7 +38,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 	{
 		g_listeners.broadcast(account->get_name() + "%/ connected as a new player.", only_online_players);
 	}
-	else
+	else if (player->conn_count <= 1)
 	{
 		g_listeners.broadcast(account->get_name() + "%/ connected.", only_online_players);
 	}
@@ -674,6 +674,16 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 }
 
+#include <signal.h>
+
+void stop(int x)
+{
+	g_accounts.save();
+	g_accounts.lock();
+	printf("EPServer stopped.\n");
+	exit(x);
+}
+
 #ifdef __unix__
 #include <X11/Xlib.h>
 #endif
@@ -682,7 +692,13 @@ int main(int arg_count, const char* args[])
 {
 #ifdef __unix__
 	XInitThreads();
+	signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE
 #endif
+
+	if (signal(SIGINT, stop) == SIG_ERR)
+	{
+		printf("signal(SIGINT) failed");
+	}
 
 	printf("EPServer version: '%s'\n", ep_version);
 
@@ -826,7 +842,7 @@ int main(int arg_count, const char* args[])
 		if (aid == INVALID_SOCKET)
 		{
 			printf("accept() returned 0x%x\n", GETERROR);
-			printf("EPServer stopped.\n");
+			stop(0);
 			return 0;
 		}
 

@@ -93,6 +93,11 @@ bool account_list_t::load()
 	return true;
 }
 
+void account_list_t::lock()
+{
+	return m_mutex.lock();
+}
+
 std::shared_ptr<account_t> account_list_t::add_account(short_str_t<16> name, md5_t pass)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);

@@ -29,6 +29,7 @@ class account_list_t final
 public:
 	bool save();
 	bool load();
+	void lock();
 
 	std::shared_ptr<account_t> add_account(short_str_t<16> name, md5_t pass);
 
