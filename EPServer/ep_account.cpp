@@ -20,7 +20,7 @@ bool account_t::load(std::FILE* f)
 {
 	u32 size;
 
-	if (std::fread(&size, 1, sizeof(u32), f) != sizeof(u32))
+	if (!std::fread(&size, 1, sizeof(u32), f))
 	{
 		return false;
 	}
@@ -38,6 +38,7 @@ bool account_t::load(std::FILE* f)
 
 	if (read != size)
 	{
+		printf("account_t::load() failed: read=%d, size=%d\n", static_cast<u32>(read), size);
 		return false;
 	}
 
