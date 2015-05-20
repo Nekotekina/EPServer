@@ -697,7 +697,7 @@ int main(int arg_count, const char* args[])
 {
 #ifdef __unix__
 	XInitThreads();
-	signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE
+	//signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE
 #endif
 
 	if (signal(SIGINT, stop) == SIG_ERR)
