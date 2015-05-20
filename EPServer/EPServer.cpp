@@ -45,7 +45,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 	// TODO: send greeting
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(800));
+	std::this_thread::sleep_for(std::chrono::seconds(1));
 
 	while (true)
 	{
@@ -102,6 +102,9 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 						g_listeners.broadcast(account->get_name() + "%/ %bwrites:%x " + message + "%x", only_online_players);
 					}
+
+					// ~207 ms + 1 ms per character
+					std::this_thread::sleep_for(std::chrono::milliseconds(200 + header.size));
 				}
 				else if (cmd.v0 >= 0 && !cmd.v1 && !cmd.v2)
 				{
@@ -114,14 +117,15 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						g_listeners.broadcast(account->get_name() + "%/%p%g writes (private):%x " + message + "%x", [&](listener_t& l){ return l.player->index == cmd.v0; });
 					}
+
+					// ~201 ms + 0.25 ms per character
+					std::this_thread::sleep_for(std::chrono::milliseconds(200 + header.size / 4));
 				}
 				else
 				{
 					listener->push_text("Invalid command (CMD_CHAT, v0=" + std::to_string(cmd.v0) + ", v1=" + std::to_string(cmd.v1) + ", v2=" + std::to_string(cmd.v2) + ")\n" + message);
 				}
 
-				// ~114 ms + 2 ms per character
-				std::this_thread::sleep_for(std::chrono::milliseconds(100 + header.size * 2));
 				break;
 			}
 			case CMD_DICE:
@@ -143,6 +147,9 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 						g_listeners.broadcast(account->get_name() + "%/ throws " + FormatDice(cmd.v1), only_online_players);
 					}
+
+					// 200 ms
+					std::this_thread::sleep_for(std::chrono::milliseconds(200));
 				}
 				else if ((cmd.v0 == -2 || cmd.v0 == player->index) && !cmd.v2)
 				{
@@ -163,13 +170,15 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 						g_listeners.broadcast(account->get_name() + "%/%p throws " + dice + " to you (private)", [&](listener_t& l){ return l.player->index == cmd.v0; });
 						listener->push_text("You throw " + dice + "%/ to " + g_players.get_name_by_index(cmd.v0));
 					}
+
+					// 200 ms
+					std::this_thread::sleep_for(std::chrono::milliseconds(200));
 				}
 				else
 				{
 					listener->push_text("Invalid command (CMD_DICE, v0=" + std::to_string(cmd.v0) + ", v1=" + std::to_string(cmd.v1) + ", v2=" + std::to_string(cmd.v2) + ")");
 				}
 
-				std::this_thread::sleep_for(std::chrono::milliseconds(300));
 				break;
 			}
 			case CMD_SHOUT:
@@ -194,11 +203,11 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				}
 				else if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
 				{
-					account->email = short_str_t<>::make(cmd.data, text_size);
+					account->email = short_str_t<255>::make(cmd.data, text_size);
 					listener->push_text("E-mail set: " + std::string(account->email.data, account->email.length));
 
 					g_accounts.save();
-					std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+					std::this_thread::sleep_for(std::chrono::seconds(1));
 				}
 				else if (account->flags & PF_SUPERADMIN)
 				{
@@ -427,14 +436,28 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				// Update player list (isn't really used)
 				listener->push_packet(packet_t(new packet_data_t(std::move(g_players.generate_player_list(player->index)))));
 
-				std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+				std::this_thread::sleep_for(std::chrono::seconds(1));
 				break;
 			}
 			case SCMD_QUIT:
 			{
-				// Quit manually (TODO)
-				//g_players.remove_player(player->index);
-				//g_listeners.update_player(player);
+				if (player->conn_count > 1)
+				{
+					// TODO (messages)
+				}
+				else if (account->flags & PF_LOCK)
+				{
+					listener->push_text("You cannot quit now.");
+					break;
+				}
+				else
+				{
+					g_listeners.broadcast(account->get_name() + "%/ has quit.", only_online_players);
+					g_players.remove_player(player->index);
+					g_listeners.update_player(player);
+				}
+
+				// Quit manually
 				return;
 			}
 
@@ -612,8 +635,6 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		g_listeners.remove_listener(listener);
 	});
 
-	account->flags &= ~PF_LOST; // remove PF_LOST flag (TODO)
-
 	{
 		const packet_data_t plist = g_players.generate_player_list(player->index);
 
@@ -625,6 +646,8 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		}
 	}
 
+	account->flags &= ~PF_LOST; // TODO (?)
+
 	g_listeners.update_player(player);
 
 	// start receiver subthread (it shouldn't send data directly)
@@ -635,6 +658,11 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		if (!socket->put(packet->get<void>(), packet->size()))
 		{
+			if (player->conn_count <= 1)
+			{
+				account->flags |= PF_LOST; // TODO (?)
+			}
+
 			printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;

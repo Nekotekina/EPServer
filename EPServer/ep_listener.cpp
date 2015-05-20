@@ -4,6 +4,11 @@
 #include "ep_player.h"
 #include "ep_listener.h"
 
+listener_t::listener_t(const std::shared_ptr<player_t>& player)
+	: player(player)
+{
+}
+
 void listener_t::push_packet(const packet_t& packet)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
@@ -54,17 +59,17 @@ packet_t listener_t::pop()
 
 std::shared_ptr<listener_t> listener_list_t::add_listener(const std::shared_ptr<player_t>& player)
 {
-	std::shared_ptr<listener_t> listener(new listener_t);
-	listener->player = player;
+	std::lock_guard<std::mutex> lock(m_mutex);
 
-	if (player.use_count() > 8) // rough limitation
+	if (player->conn_count++ >= 4) // rough limitation
 	{
+		player->conn_count--;
 		return nullptr;
 	}
 
-	std::lock_guard<std::mutex> lock(m_mutex);
+	m_list.emplace_back(new listener_t(player));
 
-	return m_list.push_back(listener), listener;
+	return m_list.back();
 }
 
 void listener_list_t::remove_listener(const listener_t* listener)
@@ -75,10 +80,7 @@ void listener_list_t::remove_listener(const listener_t* listener)
 	{
 		if (i->get() == listener)
 		{
-			//if (!--l->player->conn_count)
-			//{
-			//	l->player->account->flags |= PF_LOST;
-			//}
+			listener->player->conn_count--;
 
 			m_list.erase(i);
 			return;

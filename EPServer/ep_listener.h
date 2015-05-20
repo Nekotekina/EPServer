@@ -10,7 +10,9 @@ class listener_t final
 	std::condition_variable m_cond;
 
 public:
-	std::shared_ptr<player_t> player;
+	const std::shared_ptr<player_t> player;
+
+	explicit listener_t(const std::shared_ptr<player_t>& player);
 
 	void push_packet(const packet_t& packet);
 

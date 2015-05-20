@@ -6,8 +6,12 @@ class account_t;
 class player_t final
 {
 public:
-	std::shared_ptr<account_t> account;
-	u32 index;
+	const std::shared_ptr<account_t> account;
+	const u32 index;
+
+	std::atomic<u32> conn_count;
+
+	player_t(const std::shared_ptr<account_t>& account, u32 index);
 
 	PlayerElement generate_player_element();
 };

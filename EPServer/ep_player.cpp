@@ -4,6 +4,13 @@
 #include "ep_player.h"
 #include "ep_listener.h"
 
+player_t::player_t(const std::shared_ptr<account_t>& account, u32 index)
+	: account(account)
+	, index(index)
+	, conn_count(0)
+{
+}
+
 PlayerElement player_t::generate_player_element()
 {
 	PlayerElement res = {};
@@ -24,21 +31,18 @@ std::shared_ptr<player_t> player_list_t::add_player(const std::shared_ptr<accoun
 	{
 		if (p && p->account == account)
 		{
-			//p->conn_count++;
 			return p;
 		}
 	}
 
-	std::shared_ptr<player_t> player(new player_t);
-	player->account = account;
-	//player->conn_count = 1;
+	u32 index = 0;
 
-	for (u32& i = player->index = 0; i < m_list.size(); i++)
+	for (; index < m_list.size(); index++)
 	{
-		if (!m_list[i])
+		if (!m_list[index])
 		{
-			m_list[i] = player;
-			return player;
+			m_list[index].reset(new player_t(account, index));
+			return m_list[index];
 		}
 	}
 
@@ -47,8 +51,8 @@ std::shared_ptr<player_t> player_list_t::add_player(const std::shared_ptr<accoun
 		return nullptr;
 	}
 
-	m_list.push_back(player);
-	return player;
+	m_list.emplace_back(new player_t(account, index));
+	return m_list.back();
 }
 
 bool player_list_t::remove_player(u32 index)
