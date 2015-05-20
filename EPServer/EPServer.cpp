@@ -646,7 +646,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 }
 
-int main()
+int main(int arg_count, const char* args[])
 {
 	printf("EPServer version: '%s'\n", ep_version);
 
@@ -657,7 +657,7 @@ int main()
 
 	printf("accounts: %d\n", g_accounts.size());
 
-	if (unique_FILE f{ std::fopen("key.dat", "r") })
+	if (unique_FILE f{ std::fopen("key.dat", "rb") })
 	{
 		// get file size
 		std::fseek(f.get(), 0, SEEK_END);

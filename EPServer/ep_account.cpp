@@ -22,7 +22,6 @@ bool account_t::load(std::FILE* f)
 
 	if (std::fread(&size, 1, sizeof(u32), f) != sizeof(u32))
 	{
-		printf("account_t::load() failed (I)");
 		return false;
 	}
 
@@ -30,19 +29,14 @@ bool account_t::load(std::FILE* f)
 
 	u64 _flags;
 	read += std::fread(&_flags, 1, sizeof(_flags), f);
-	printf("%d ", read);
 	flags.store(_flags, std::memory_order_relaxed);
 	read += std::fread(pass.data(), 1, pass.size(), f);
-	printf("%d ", read);
 
 	read += name.load(f);
-	printf("%d ", read);
 	read += uniq_name.load(f);
-	printf("%d ", read);
 	read += email.load(f);
-	printf("%d\n", read);
 
-	if (read != size)
+	if (read > size)
 	{
 		return false;
 	}
@@ -56,7 +50,7 @@ bool account_list_t::save()
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	unique_FILE f(std::fopen("account.dat", "w"));
+	unique_FILE f(std::fopen("account.dat", "wb"));
 
 	if (!f)
 	{
@@ -76,7 +70,7 @@ bool account_list_t::load()
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	unique_FILE f(std::fopen("account.dat", "r"));
+	unique_FILE f(std::fopen("account.dat", "rb"));
 
 	if (!f)
 	{
