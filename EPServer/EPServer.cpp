@@ -5,7 +5,11 @@
 #include "ep_player.h"
 #include "ep_listener.h"
 #include "hl_md5.h"
+
+#pragma warning(push)
+#pragma warning(disable : 4146 4800)
 #include <mpirxx.h>
+#pragma warning(pop)
 
 const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(ep_version, strlen(ep_version)) };
 
@@ -29,6 +33,17 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 		// execute at thread exit
 		listener->stop();
 	});
+
+	if (account->flags.fetch_and(~PF_NEW_PLAYER) & PF_NEW_PLAYER)
+	{
+		g_listeners.broadcast(account->get_name() + "%/ connected as a new player.", only_online_players);
+	}
+	else
+	{
+		g_listeners.broadcast(account->get_name() + "%/ connected.", only_online_players);
+	}
+
+	// TODO: send greeting
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(800));
 
@@ -507,19 +522,33 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 				
 				if (num == 0)
 				{
-					memmove(auth_info.get(), auth_info.get() + i, g_key_size - i); // fix data displacement
-					memset(auth_info.get() + (g_key_size - i), 0, i);
+					// fix data displacement (allocate new block)
+					packet_data_t new_info(g_key_size - i);
+					memcpy(new_info.get(), auth_info.get() + i, new_info.size());
+					auth_info = std::move(new_info);
 					break;
 				}
 			}
 
-			memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size()); // copy session key
+			if (auth_info.size() < sizeof(SecureAuthRec))
+			{
+				// clear invalid data (proceed with empty login)
+				memset(auth_info.get(), 0, auth_info.size());
+			}
+			else
+			{
+				// copy session key
+				memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size());
 
-			socket.reset(new cipher_socket_t(aid, std::move(key)));
+				// initialize socket with encryption
+				socket.reset(new cipher_socket_t(aid, std::move(key)));
+			}
 		}
-		else
+		
+		if (!socket)
 		{
-			socket.reset(new socket_t(aid)); // simple socket
+			// initialize socket without encryption
+			socket.reset(new socket_t(aid));
 		}
 
 		auto auth = auth_info.get<ClientAuthRec>();
@@ -626,7 +655,7 @@ int main()
 
 	g_accounts.load(); // load account info
 
-	printf("accounts: %d\n", g_accounts.size());
+	printf("accounts: %llu\n", static_cast<u64>(g_accounts.size()));
 
 	if (unique_FILE f{ std::fopen("key.dat", "r") })
 	{
