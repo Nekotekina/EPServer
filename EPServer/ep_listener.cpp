@@ -6,11 +6,9 @@
 
 void listener_t::push_packet(const packet_t& packet)
 {
-	{
-		std::lock_guard<std::mutex> lock(m_mutex);
+	std::lock_guard<std::mutex> lock(m_mutex);
 
-		m_queue.push(packet);
-	}
+	m_queue.push(packet);
 
 	m_cond.notify_one();
 }

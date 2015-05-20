@@ -735,6 +735,12 @@ int main()
 
 	printf("key size: %d\n", g_key_size * 8);
 
+	if (g_auth_packet.size() == 0)
+	{
+		g_auth_packet.reset(3);
+		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH };
+	}
+
 #ifdef _WIN32
 	WSADATA wsa_info = {};
 
