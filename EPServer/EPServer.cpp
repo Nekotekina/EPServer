@@ -678,6 +678,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 void stop(int x)
 {
+	g_server.close();
 	g_accounts.save();
 	g_accounts.lock();
 	printf("EPServer stopped.\n");
