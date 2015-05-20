@@ -88,7 +88,7 @@ void listener_list_t::remove_listener(const listener_t* listener)
 	}
 }
 
-void listener_list_t::update_player(const std::shared_ptr<player_t>& player)
+void listener_list_t::update_player(const std::shared_ptr<player_t>& player, bool removed)
 {
 	packet_t packet(new packet_data_t(sizeof(ServerUpdatePlayer)));
 
@@ -96,7 +96,7 @@ void listener_list_t::update_player(const std::shared_ptr<player_t>& player)
 	data->header.code = SERVER_PUPDATE;
 	data->header.size = sizeof(ServerUpdatePlayer) - 3;
 	data->index = player->index;
-	data->data = player->generate_player_element();
+	data->data = removed ? PlayerElement{} : player->generate_player_element();
 
 	std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -126,5 +126,15 @@ void listener_list_t::broadcast(const std::string& text, const std::function<boo
 		{
 			listener->push_packet(packet);
 		}
+	}
+}
+
+void listener_list_t::stop_all()
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+
+	for (auto& listener : m_list)
+	{
+		listener->stop();
 	}
 }

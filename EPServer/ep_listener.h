@@ -43,7 +43,9 @@ public:
 
 	void remove_listener(const listener_t* listener);
 
-	void update_player(const std::shared_ptr<player_t>& player);
+	void update_player(const std::shared_ptr<player_t>& player, bool removed = false);
 
 	void broadcast(const std::string& text, const std::function<bool(listener_t&)> pred);
+
+	void stop_all();
 };

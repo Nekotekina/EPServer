@@ -18,6 +18,8 @@ player_list_t g_players;
 listener_list_t g_listeners;
 socket_t g_server;
 
+void stop(int x);
+
 packet_data_t g_auth_packet; // open key + sign
 mpz_class g_key_n; // open key
 mpz_class g_key_d; // priv key
@@ -398,9 +400,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			{
 				if (account->flags & PF_SUPERADMIN)
 				{
-					// restart server
-					listener->push_text("Not implemented.");
-					g_server.close(); // for test
+					// restart server (TODO)
+					stop(0);
 				}
 				else
 				{
@@ -454,7 +455,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				{
 					g_listeners.broadcast(account->get_name() + "%/ has quit.", only_online_players);
 					g_players.remove_player(player->index);
-					g_listeners.update_player(player);
+					g_listeners.update_player(player, true);
 				}
 
 				// Quit manually
@@ -647,7 +648,6 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	}
 
 	account->flags &= ~PF_LOST; // TODO (?)
-
 	g_listeners.update_player(player);
 
 	// start receiver subthread (it shouldn't send data directly)
@@ -661,6 +661,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 			if (player->conn_count <= 1)
 			{
 				account->flags |= PF_LOST; // TODO (?)
+				g_listeners.update_player(player);
 			}
 
 			printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
@@ -678,11 +679,14 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 void stop(int x)
 {
-	g_server.close();
+	g_listeners.broadcast("Server stopped for reboot.", [](listener_t&){ return true; });
+	g_listeners.stop_all();
+
+	std::this_thread::sleep_for(std::chrono::seconds(1));
+	
 	g_accounts.save();
 	g_accounts.lock();
-	printf("EPServer stopped.\n");
-	exit(x);
+	g_server.close();
 }
 
 #ifdef __unix__
@@ -840,10 +844,10 @@ int main(int arg_count, const char* args[])
 		// accept connection
 		socklen_t size = sizeof(sockaddr_in);
 		socket_id_t aid = accept(sid, (sockaddr*)&info, &size);
+
 		if (aid == INVALID_SOCKET)
 		{
-			printf("accept() returned 0x%x\n", GETERROR);
-			stop(0);
+			printf("EPServer stopped.\n");
 			return 0;
 		}
 
