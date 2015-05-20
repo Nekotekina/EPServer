@@ -20,6 +20,8 @@ socket_t g_server;
 
 void stop(int x);
 
+packet_t g_keepalive_packet;
+
 packet_data_t g_auth_packet; // open key + sign
 mpz_class g_key_n; // open key
 mpz_class g_key_d; // priv key
@@ -654,7 +656,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	std::thread(receiver_thread, socket, account, player, listener).detach();
 
 	// start sending packets
-	while (auto packet = listener->pop())
+	while (auto packet = listener->pop(30000, g_keepalive_packet))
 	{
 		if (!socket->put(packet->get<void>(), packet->size()))
 		{
@@ -797,6 +799,9 @@ int main(int arg_count, const char* args[])
 		g_auth_packet.reset(3);
 		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH };
 	}
+
+	g_keepalive_packet.reset(new packet_data_t(5));
+	*g_keepalive_packet->get<ClientSCmdRec>() = { { CLIENT_SCMD, 2 }, SCMD_NONE };
 
 #ifdef _WIN32
 	WSADATA wsa_info = {};

@@ -42,13 +42,18 @@ void listener_t::push_text(const std::string& text)
 	push_packet(packet);
 }
 
-packet_t listener_t::pop()
+packet_t listener_t::pop(u32 timeout_ms, const packet_t& default_packet)
 {
 	std::unique_lock<std::mutex> lock(m_mutex);
 
-	while (m_queue.empty())
+	m_cond.wait_for(lock, std::chrono::milliseconds(timeout_ms), [&]
 	{
-		m_cond.wait(lock);
+		return !m_queue.empty();
+	});
+
+	if (m_queue.empty())
+	{
+		return default_packet;
 	}
 
 	packet_t packet = std::move(m_queue.front());

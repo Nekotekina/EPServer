@@ -193,6 +193,12 @@ struct ClientCmdRec // doesn't include ProtocolHeader
 	char data[max_data_size];
 };
 
+struct ClientSCmdRec
+{
+	ProtocolHeader header;
+	u16 cmd;
+};
+
 struct ServerVersionRec
 {
 	ProtocolHeader header;

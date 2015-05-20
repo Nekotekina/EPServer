@@ -30,7 +30,7 @@ public:
 		push_packet(nullptr); // use empty message as stop message
 	}
 
-	packet_t pop();
+	packet_t pop(u32 timeout_ms, const packet_t& default_packet);
 };
 
 class listener_list_t final
