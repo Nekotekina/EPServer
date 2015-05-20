@@ -20,8 +20,9 @@ bool account_t::load(std::FILE* f)
 {
 	u32 size;
 
-	if (!std::fread(&size, 1, sizeof(u32), f))
+	if (std::fread(&size, 1, sizeof(u32), f) != sizeof(u32))
 	{
+		printf("account_t::load() failed (I)");
 		return false;
 	}
 
@@ -29,16 +30,20 @@ bool account_t::load(std::FILE* f)
 
 	u64 _flags;
 	read += std::fread(&_flags, 1, sizeof(_flags), f);
+	printf("%d ", read);
 	flags.store(_flags, std::memory_order_relaxed);
 	read += std::fread(pass.data(), 1, pass.size(), f);
+	printf("%d ", read);
 
 	read += name.load(f);
+	printf("%d ", read);
 	read += uniq_name.load(f);
+	printf("%d ", read);
 	read += email.load(f);
+	printf("%d\n", read);
 
 	if (read != size)
 	{
-		printf("account_t::load() failed: read=%d, size=%d\n", static_cast<u32>(read), size);
 		return false;
 	}
 
