@@ -29,12 +29,12 @@ mpz_class g_key_n; // open key
 mpz_class g_key_d; // priv key
 u32 g_key_size = 0; // key size (bytes)
 
-static bool only_online_players(listener_t& listener)
+bool only_online_players(listener_t& listener)
 {
 	return (listener.player->account->flags & PF_OFF) == 0;
 }
 
-static bool all_players(listener_t& listener)
+bool all_players(listener_t& listener)
 {
 	return true;
 }
@@ -205,7 +205,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				else if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
 				{
 					account->email = short_str_t<255>::make(cmd.data, text_size);
-					listener->push_text("E-mail set: " + std::string(account->email.data, account->email.length));
+					listener->push_text("E-mail:");
+					listener->push_text(account->email);
 
 					g_accounts.save();
 					std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -245,10 +246,17 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 			case CMD_SET_FLAG:
 			{
-				if ((account->flags & PF_SUPERADMIN) && (1ull << cmd.v1 != PF_SUPERADMIN))
+				if (account->flags & PF_SUPERADMIN)
 				{
-					// find cmd.v0 player and change flag
-					listener->push_text("Not implemented.");
+					if (cmd.v0 >= 0 && cmd.v1 < 64u && (1ull << cmd.v1 != PF_SUPERADMIN) && !cmd.v2)
+					{
+						// find cmd.v0 player and change flag
+						listener->push_text("Not implemented.");
+					}
+					else
+					{
+						listener->push_text("Invalid arguments.");
+					}
 				}
 				else
 				{
@@ -480,7 +488,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size));
 
 		ServerTextRec data = { SERVER_TEXT, static_cast<u16>(size + sizeof(double)), GetTime() };
-		memcpy(data.data, text.c_str(), size);
+		std::memcpy(data.data, text.c_str(), size);
 
 		socket.put(&data, data.header.size + 3);
 	};
@@ -488,7 +496,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	if (send(aid, g_auth_packet.get(), g_auth_packet.size(), 0) != g_auth_packet.size())
 	{
 		socket_t socket(aid);
-		printf("- %s:%d (I)\n", inet_ntoa(ip), port);
+		std::printf("- %s:%d (I)\n", inet_ntoa(ip), port);
 		socket.put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
@@ -509,7 +517,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 			(auth_info.reset(header.size), recv(aid, auth_info.get(), header.size, MSG_WAITALL) != header.size))
 		{
 			socket_t socket(aid);
-			printf("- %s:%d (II)\n", inet_ntoa(ip), port);
+			std::printf("- %s:%d (II)\n", inet_ntoa(ip), port);
 			message(socket, "Invalid auth packet");
 			socket.put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
@@ -518,9 +526,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		// select auth mode
 		if (header.code == CLIENT_SECURE_AUTH)
 		{
-			packet_data_t key(32);
-
-			mpz_class num = 0u;
+			mpz_class num;
 
 			for (u32 i = 0; i < g_key_size; i++) // convert from base 256
 			{
@@ -530,7 +536,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 			mpz_powm(num.get_mpz_t(), num.get_mpz_t(), g_key_d.get_mpz_t(), g_key_n.get_mpz_t()); // decrypt
 
-			for (u32 i = g_key_size - 1; ~i; i--) // convert to base 256
+			for (u32 i = g_key_size - 1; ~i; i--) // get decrypted data
 			{
 				auth_info.get<u8>()[i] = static_cast<u8>(num.get_ui());
 				num >>= 8;
@@ -539,7 +545,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 				{
 					// fix data displacement (allocate new block)
 					packet_data_t new_info(g_key_size - i);
-					memcpy(new_info.get(), auth_info.get() + i, new_info.size());
+					std::memcpy(new_info.get(), auth_info.get() + i, new_info.size());
 					auth_info = std::move(new_info);
 					break;
 				}
@@ -548,10 +554,12 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 			if (auth_info.size() < sizeof(SecureAuthRec))
 			{
 				// clear invalid data (proceed with empty login)
-				memset(auth_info.get(), 0, auth_info.size());
+				std::memset(auth_info.get(), 0, auth_info.size());
 			}
 			else
 			{
+				packet_data_t key(32);
+
 				// copy session key
 				memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size());
 
@@ -571,7 +579,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		// check login
 		if (auth->name.length > 16 || !IsLoginValid(auth->name.data, auth->name.length))
 		{
-			printf("- %s:%d (III)\n", inet_ntoa(ip), port);
+			std::printf("- %s:%d (III)\n", inet_ntoa(ip), port);
 			message(*socket, "Invalid login");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -586,7 +594,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		// find or create account
 		if (!(account = g_accounts.add_account(auth->name, auth->pass)))
 		{
-			printf("- %s:%d (IV)\n", inet_ntoa(ip), port); // TODO: messages (wrong password)
+			std::printf("- %s:%d (IV)\n", inet_ntoa(ip), port); // TODO: messages (wrong password)
 			message(*socket, "Invalid password");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -595,7 +603,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 	if (account->flags & PF_NOCONNECT)
 	{
-		printf("- %s:%d (V)\n", inet_ntoa(ip), port);
+		std::printf("- %s:%d (V)\n", inet_ntoa(ip), port);
 		message(*socket, "Account is banned");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
@@ -604,18 +612,20 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	g_accounts.save(); // TODO: remove
 
 	std::shared_ptr<player_t> player = g_players.add_player(account);
+
 	if (!player)
 	{
-		printf("- %s:%d (VI)\n", inet_ntoa(ip), port);
+		std::printf("- %s:%d (VI)\n", inet_ntoa(ip), port);
 		message(*socket, "Too many players connected");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
 	}
 
 	std::shared_ptr<listener_t> listener = g_listeners.add_listener(player);
+
 	if (!listener)
 	{
-		printf("- %s:%d (VII)\n", inet_ntoa(ip), port);
+		std::printf("- %s:%d (VII)\n", inet_ntoa(ip), port);
 		message(*socket, "Too many connections");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
@@ -646,7 +656,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 		if (!socket->put(version_info) || !socket->put(plist.get(), plist.size()))
 		{
-			printf("- %s:%d (VIII)\n", inet_ntoa(ip), port);
+			std::printf("- %s:%d (VIII)\n", inet_ntoa(ip), port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
@@ -674,14 +684,14 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		if (!socket->put(packet->get<void>(), packet->size()))
 		{
-			printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
+			std::printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
 	}
 
 	// connection closed
-	printf("- %s:%d (X)\n", inet_ntoa(ip), port);
+	std::printf("- %s:%d (X)\n", inet_ntoa(ip), port);
 	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 }
 
@@ -712,18 +722,18 @@ int main(int arg_count, const char* args[])
 
 	if (signal(SIGINT, stop) == SIG_ERR)
 	{
-		printf("signal(SIGINT) failed");
+		std::printf("signal(SIGINT) failed");
 	}
 
-	printf("EPServer version info: unknown\n"); // TODO: git version
-	printf("EPServer client version: '%s'\n", ep_version);
+	std::printf("EPServer version info: unknown\n"); // TODO: git version
+	std::printf("EPServer client version: '%s'\n", ep_version);
 
-	printf("ipv4.dat not loaded!\n"); // TODO: load IP db
-	printf("ipv6.dat not loaded!\n"); // TODO: IPv6 support
+	std::printf("ipv4.dat not loaded!\n"); // TODO: load IP db
+	std::printf("ipv6.dat not loaded!\n"); // TODO: IPv6 support
 
 	g_accounts.load(); // load account info
 
-	printf("accounts: %d\n", g_accounts.size());
+	std::printf("accounts: %d\n", g_accounts.size());
 
 	if (unique_FILE f{ std::fopen("key.dat", "rb") })
 	{
@@ -798,10 +808,10 @@ int main(int arg_count, const char* args[])
 	}
 	else
 	{
-		printf("key.dat not found!\n");
+		std::printf("key.dat not found!\n");
 	}
 
-	printf("key size: %d\n", g_key_size * 8);
+	std::printf("key size: %d\n", g_key_size * 8);
 
 	if (g_auth_packet.size() == 0)
 	{
@@ -817,7 +827,7 @@ int main(int arg_count, const char* args[])
 
 	if (auto res = WSAStartup(MAKEWORD(2, 2), &wsa_info))
 	{
-		printf("WSAStartup() failed: 0x%x\n", res);
+		std::printf("WSAStartup() failed: 0x%x\n", res);
 		return -1;
 	}
 
@@ -830,7 +840,7 @@ int main(int arg_count, const char* args[])
 	socket_id_t sid = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sid == INVALID_SOCKET)
 	{
-		printf("socket() failed: 0x%x\n", GETERROR);
+		std::printf("socket() failed: 0x%x\n", GETERROR);
 		return -1;
 	}
 
@@ -843,13 +853,13 @@ int main(int arg_count, const char* args[])
 
 	if (bind(sid, (sockaddr*)&info, sizeof(sockaddr_in)) == SOCKET_ERROR)
 	{
-		printf("bind() failed: 0x%x\n", GETERROR);
+		std::printf("bind() failed: 0x%x\n", GETERROR);
 		return -1;
 	}
 
 	if (listen(sid, SOMAXCONN) == SOCKET_ERROR)
 	{
-		printf("listen() failed: 0x%x\n", GETERROR);
+		std::printf("listen() failed: 0x%x\n", GETERROR);
 		return -1;
 	}
 
@@ -861,11 +871,11 @@ int main(int arg_count, const char* args[])
 
 		if (aid == INVALID_SOCKET)
 		{
-			printf("EPServer stopped.\n");
+			std::printf("EPServer stopped.\n");
 			return 0;
 		}
 
-		printf("+ %s:%d\n", inet_ntoa(info.sin_addr), info.sin_port);
+		std::printf("+ %s:%d\n", inet_ntoa(info.sin_addr), info.sin_port);
 
 		// start client thread
 		std::thread(sender_thread, aid, info.sin_addr, info.sin_port).detach();

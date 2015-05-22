@@ -4,13 +4,12 @@
 #define _CRT_SECURE_NO_WARNINGS // TODO
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstdint>
 #include <cstddef>
 #include <cstring>
 #include <ctime>
-#include <sys/stat.h>
 #include <string>
 #include <array>
 #include <memory>
@@ -26,15 +25,15 @@
 #define NOMINMAX // TODO
 #endif
 
-using u8 = uint8_t;
-using u16 = uint16_t;
-using u32 = uint32_t;
-using u64 = uint64_t;
+using u8 = std::uint8_t;
+using u16 = std::uint16_t;
+using u32 = std::uint32_t;
+using u64 = std::uint64_t;
 
-using s8 = int8_t;
-using s16 = int16_t;
-using s32 = int32_t;
-using s64 = int64_t;
+using s8 = std::int8_t;
+using s16 = std::int16_t;
+using s32 = std::int32_t;
+using s64 = std::int64_t;
 
 using f32 = float;
 using f64 = double;

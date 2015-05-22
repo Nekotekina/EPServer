@@ -134,9 +134,9 @@ public:
 
 		std::unique_ptr<rc6_block_t[]> buf(new rc6_block_t[asize / 16]);
 
-		memcpy(buf.get(), data, size);
+		std::memcpy(buf.get(), data, size);
 
-		memset(reinterpret_cast<u8*>(buf.get()) + size, 0, asize - size); // zero padding
+		std::memset(reinterpret_cast<u8*>(buf.get()) + size, 0, asize - size); // zero padding
 
 		for (u32 i = 0; i < asize / 16; i++)
 		{
@@ -151,7 +151,7 @@ public:
 		// try to get saved data
 		if (const u32 read = std::min<u32>(m_received.length, size))
 		{
-			memcpy(data, m_received.data, read);
+			std::memcpy(data, m_received.data, read);
 			m_received = short_str_t<15>::make(m_received.data + read, m_received.length - read); // shrink saved data
 
 			size -= read;
@@ -173,10 +173,10 @@ public:
 				m_cipher.decrypt_block_cbc(buf.get()[i]);
 			}
 			
-			memcpy(data, buf.get(), size);
+			std::memcpy(data, buf.get(), size);
 			m_received = short_str_t<15>::make(reinterpret_cast<u8*>(buf.get()) + size, asize - size); // save exceeded data
 
-			memset(buf.get(), 0, asize); // burn
+			std::memset(buf.get(), 0, asize); // burn
 		}
 
 		return true;

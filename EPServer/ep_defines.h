@@ -43,7 +43,7 @@ public:
 
 	~packet_data_t()
 	{
-		memset(m_data.get(), 0, m_size); // burn
+		std::memset(m_data.get(), 0, m_size); // burn
 	}
 
 	void reset(u32 size)
@@ -83,9 +83,14 @@ template<u8 N = 255> struct short_str_t
 	static short_str_t make(const void* ptr, size_t len)
 	{
 		short_str_t res;
-		memcpy(res.data, ptr, res.length = static_cast<u8>(std::min<size_t>(len, N)));
-		memset(res.data + res.length, 0, N - res.length);
+		std::memcpy(res.data, ptr, res.length = static_cast<u8>(std::min<size_t>(len, N)));
+		std::memset(res.data + res.length, 0, N - res.length);
 		return res;
+	}
+
+	operator std::string() const
+	{
+		return{ data, length };
 	}
 
 	template<u8 N2> operator short_str_t<N2>() const
@@ -95,7 +100,7 @@ template<u8 N = 255> struct short_str_t
 
 	template<u8 N2> bool operator ==(const short_str_t<N2>& right) const
 	{
-		return length == right.length && memcmp(data, right.data, length) == 0;
+		return length == right.length && std::memcmp(data, right.data, length) == 0;
 	}
 
 	size_t save(std::FILE* f) const
@@ -114,12 +119,6 @@ template<u8 N = 255> struct short_str_t
 		res += std::fread(data, 1, length, f);
 		return res;
 	}
-};
-
-enum
-{
-	MAX_OFFTIME = 1000 * 60 * 60, // 60 min
-	MAX_WAIT_TIME = 1000 * 60 * 2, // 2 min
 };
 			 
 enum ProtocolCmdType : u8
@@ -325,7 +324,7 @@ static std::string FormatDice(const s32 data)
 	{
 		if (add < 0) return std::to_string(add);
 		if (add > 0) return "+" + std::to_string(add);
-		return std::string();
+		return{};
 	};
 
 	return std::to_string(dice.count) + "d" + std::to_string(dice.size) + format_add(dice.add) + " = " + std::to_string(res);

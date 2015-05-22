@@ -26,8 +26,8 @@ rc6_cipher_t::rc6_cipher_t(packet_data_t key)
 		throw std::length_error("Invalid cipher key size");
 	}
 
-	memcpy(&m_enc_last, key.get(), 16);
-	memcpy(&m_dec_last, key.get(), 16);
+	std::memcpy(&m_enc_last, key.get(), 16);
+	std::memcpy(&m_dec_last, key.get(), 16);
 
 	u32 L[minlen];
 

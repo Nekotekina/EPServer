@@ -54,7 +54,7 @@ bool account_list_t::save()
 
 	if (!f)
 	{
-		printf("account.dat writing failed!");
+		std::printf("account.dat writing failed!");
 		return false;
 	}
 
@@ -74,7 +74,7 @@ bool account_list_t::load()
 
 	if (!f)
 	{
-		printf("account.dat not found!\n");
+		std::printf("account.dat not found!\n");
 		return false;
 	}
 

@@ -23,7 +23,7 @@ void listener_t::push(const void* data, u32 size)
 {
 	packet_t packet(new packet_data_t(size));
 
-	memcpy(packet->get(), data, size);
+	std::memcpy(packet->get(), data, size);
 
 	push_packet(packet);
 }
@@ -38,7 +38,7 @@ void listener_t::push_text(const std::string& text)
 	data->header.code = SERVER_TEXT;
 	data->header.size = size + sizeof(f64);
 	data->stamp = GetTime();
-	memcpy(data->data, text.c_str(), size);
+	std::memcpy(data->data, text.c_str(), size);
 
 	push_packet(packet);
 }
@@ -123,7 +123,7 @@ void listener_list_t::broadcast(const std::string& text, const std::function<boo
 	data->header.code = SERVER_TEXT;
 	data->header.size = size + sizeof(f64);
 	data->stamp = GetTime();
-	memcpy(data->data, text.c_str(), size);
+	std::memcpy(data->data, text.c_str(), size);
 
 	std::lock_guard<std::mutex> lock(m_mutex);
 
