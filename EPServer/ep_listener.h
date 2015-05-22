@@ -16,7 +16,7 @@ public:
 
 	explicit listener_t(const std::shared_ptr<player_t>& player);
 
-	void push_packet(const packet_t& packet);
+	void push_packet(packet_t packet);
 
 	void push(const void* data, u32 size);
 
@@ -25,7 +25,10 @@ public:
 		push(&data, sizeof(T));
 	}
 
-	void push_text(const std::string& text);
+	void push_text(const std::string& text)
+	{
+		push_packet(packet_t(new packet_data_t(ServerTextRec::generate(GetTime(), text))));
+	}
 
 	void stop()
 	{

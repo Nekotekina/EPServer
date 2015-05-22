@@ -10,11 +10,11 @@ listener_t::listener_t(const std::shared_ptr<player_t>& player)
 	quit_flag.clear();
 }
 
-void listener_t::push_packet(const packet_t& packet)
+void listener_t::push_packet(packet_t packet)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	m_queue.push(packet);
+	m_queue.emplace(std::move(packet));
 
 	m_cond.notify_one();
 }
@@ -25,21 +25,7 @@ void listener_t::push(const void* data, u32 size)
 
 	std::memcpy(packet->get(), data, size);
 
-	push_packet(packet);
-}
-
-void listener_t::push_text(const std::string& text)
-{
-	const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size)); // text size
-
-	packet_t packet(new packet_data_t(size + 11));
-
-	auto data = packet->get<ServerTextRec>();
-	data->header = { SERVER_TEXT, size + 8 };
-	data->stamp = GetTime();
-	std::memcpy(data->data, text.c_str(), size);
-
-	push_packet(packet);
+	push_packet(std::move(packet));
 }
 
 packet_t listener_t::pop(u32 timeout_ms, const packet_t& default_packet)
@@ -114,14 +100,7 @@ void listener_list_t::update_player(const std::shared_ptr<player_t>& player, boo
 
 void listener_list_t::broadcast(const std::string& text, const std::function<bool(listener_t&)> pred)
 {
-	const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size)); // text size
-
-	packet_t packet(new packet_data_t(size + 11));
-
-	auto data = packet->get<ServerTextRec>();
-	data->header = { SERVER_TEXT, size + 8 };
-	data->stamp = GetTime();
-	std::memcpy(data->data, text.c_str(), size);
+	packet_t packet(new packet_data_t(ServerTextRec::generate(GetTime(), text)));
 
 	std::lock_guard<std::mutex> lock(m_mutex);
 

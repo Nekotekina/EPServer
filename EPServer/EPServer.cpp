@@ -444,7 +444,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			case SCMD_REFRESH:
 			{
 				// Update player list (isn't really used)
-				listener->push_packet(packet_t(new packet_data_t(std::move(g_players.generate_player_list(player->index)))));
+				listener->push_packet(packet_t(new packet_data_t(g_players.generate_player_list(player->index))));
 
 				std::this_thread::sleep_for(std::chrono::seconds(1));
 				break;
@@ -486,14 +486,11 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 {
-	auto message = [](socket_t& socket, std::string text)
+	auto message = [](socket_t& socket, const char* text)
 	{
-		const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size));
+		packet_data_t packet = ServerTextRec::generate(GetTime(), text, strlen(text));
 
-		ServerTextRec data = { SERVER_TEXT, size + 8, GetTime() };
-		std::memcpy(data.data, text.c_str(), size);
-
-		socket.put(&data, data.header.size + 3);
+		socket.put(packet.get(), packet.size());
 	};
 
 	if (send(aid, g_auth_packet.get(), g_auth_packet.size(), 0) != g_auth_packet.size())
