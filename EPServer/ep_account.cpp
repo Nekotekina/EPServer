@@ -4,11 +4,11 @@
 
 void account_t::save(std::FILE* f)
 {
-	u32 size = name.length + 1 + sizeof(pass) + sizeof(flags) + uniq_name.length + 1 + email.length + 1;
-	std::fwrite(&size, 1, sizeof(size), f);
+	u32 size = name.length + 1 + 16 + 8 + uniq_name.length + 1 + email.length + 1;
+	std::fwrite(&size, 1, 4, f);
 
-	auto _flags = flags.load(std::memory_order_relaxed);
-	std::fwrite(&_flags, 1, sizeof(_flags), f);
+	u64 _flags = flags.load(std::memory_order_relaxed) & ~PF_VOLATILE_FLAGS;
+	std::fwrite(&_flags, 1, 8, f);
 	std::fwrite(pass.data(), 1, pass.size(), f);
 
 	name.save(f);
@@ -20,7 +20,7 @@ bool account_t::load(std::FILE* f)
 {
 	u32 size;
 
-	if (std::fread(&size, 1, sizeof(u32), f) != sizeof(u32))
+	if (std::fread(&size, 1, 4, f) != 4)
 	{
 		return false;
 	}
@@ -28,8 +28,8 @@ bool account_t::load(std::FILE* f)
 	size_t read = 0;
 
 	u64 _flags;
-	read += std::fread(&_flags, 1, sizeof(_flags), f);
-	flags.store(_flags, std::memory_order_relaxed);
+	read += std::fread(&_flags, 1, 8, f);
+	flags.store(_flags & ~PF_VOLATILE_FLAGS, std::memory_order_relaxed);
 	read += std::fread(pass.data(), 1, pass.size(), f);
 
 	read += name.load(f);

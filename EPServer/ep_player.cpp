@@ -9,6 +9,7 @@ player_t::player_t(const std::shared_ptr<account_t>& account, u32 index)
 	, index(index)
 	, conn_count(0)
 {
+	account->flags |= PF_LOST; // crutch
 }
 
 PlayerElement player_t::generate_player_element()
@@ -72,11 +73,12 @@ packet_data_t player_list_t::generate_player_list(u32 self)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	packet_data_t packet(static_cast<u32>(11 + sizeof(PlayerElement) * m_list.size()));
+	const u16 hsize = static_cast<u16>(8 + sizeof(PlayerElement) * m_list.size());
+
+	packet_data_t packet(hsize + 3);
 
 	auto data = packet.get<ServerListRec>();
-	data->header.code = SERVER_PLIST;
-	data->header.size = static_cast<u16>(8 + sizeof(PlayerElement) * m_list.size());
+	data->header = { SERVER_PLIST, hsize };
 	data->self = self;
 	data->count = static_cast<u32>(m_list.size());
 

@@ -35,8 +35,7 @@ void listener_t::push_text(const std::string& text)
 	packet_t packet(new packet_data_t(size + 11));
 
 	auto data = packet->get<ServerTextRec>();
-	data->header.code = SERVER_TEXT;
-	data->header.size = size + sizeof(f64);
+	data->header = { SERVER_TEXT, size + 8 };
 	data->stamp = GetTime();
 	std::memcpy(data->data, text.c_str(), size);
 
@@ -120,8 +119,7 @@ void listener_list_t::broadcast(const std::string& text, const std::function<boo
 	packet_t packet(new packet_data_t(size + 11));
 
 	auto data = packet->get<ServerTextRec>();
-	data->header.code = SERVER_TEXT;
-	data->header.size = size + sizeof(f64);
+	data->header = { SERVER_TEXT, size + 8 };
 	data->stamp = GetTime();
 	std::memcpy(data->data, text.c_str(), size);
 
@@ -142,6 +140,7 @@ void listener_list_t::stop_all()
 
 	for (auto& listener : m_list)
 	{
+		listener->push(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		listener->stop();
 	}
 }

@@ -106,7 +106,7 @@ template<u8 N = 255> struct short_str_t
 	size_t save(std::FILE* f) const
 	{
 		size_t res = 0;
-		res += std::fwrite(&length, 1, sizeof(length), f);
+		res += std::fwrite(&length, 1, 1, f);
 		res += std::fwrite(data, 1, length, f);
 		return res;
 	}
@@ -115,7 +115,7 @@ template<u8 N = 255> struct short_str_t
 	{
 		*this = {};
 		size_t res = 0;
-		res += std::fread(&length, 1, sizeof(length), f);
+		res += std::fread(&length, 1, 1, f);
 		res += std::fread(data, 1, length, f);
 		return res;
 	}
@@ -282,6 +282,8 @@ enum PlayerFlags : u64
 	PF_NOCONNECT = 1ull << 8,
 	PF_LOST = 1ull << 9, // connection lost
 	PF_NEW_PLAYER = 1ull << 10,
+
+	PF_VOLATILE_FLAGS = PF_LOST | PF_NEW_PLAYER,
 };
 
 static const char* const FlagName[] =

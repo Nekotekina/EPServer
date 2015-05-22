@@ -393,7 +393,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 			}
 		}
-		else if (header.code == CLIENT_SCMD && header.size == sizeof(u16))
+		else if (header.code == CLIENT_SCMD && header.size == 2)
 		{
 			u16 scmd;
 			if (!socket->get(scmd))
@@ -459,6 +459,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					break;
 				}
 
+				listener->push_text("You have quit.");
 				listener->quit_flag.test_and_set();
 				return;
 			}
@@ -489,7 +490,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		const u16 size = static_cast<u16>(std::min<size_t>(text.size(), ServerTextRec::max_data_size));
 
-		ServerTextRec data = { SERVER_TEXT, static_cast<u16>(size + sizeof(double)), GetTime() };
+		ServerTextRec data = { SERVER_TEXT, size + 8, GetTime() };
 		std::memcpy(data.data, text.c_str(), size);
 
 		socket.put(&data, data.header.size + 3);
@@ -678,7 +679,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		g_listeners.broadcast(account->get_name() + "%/ connected.", only_online_players);
 	}
 
-	g_listeners.update_player(player);
+	g_listeners.update_player(player); // silent reconnection
 
 	// start receiver subthread (it shouldn't send data directly)
 	std::thread(receiver_thread, socket, account, player, listener).detach();
@@ -698,8 +699,6 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	std::printf("- %s:%d (X)\n", inet_ntoa(ip), port);
 	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 }
-
-#include <signal.h>
 
 void stop(int x)
 {
@@ -721,10 +720,10 @@ int main(int arg_count, const char* args[])
 {
 #ifdef __unix__
 	XInitThreads();
-	//signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE
+	//std::signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE (disabled)
 #endif
 
-	if (signal(SIGINT, stop) == SIG_ERR)
+	if (std::signal(SIGINT, stop) == SIG_ERR)
 	{
 		std::printf("signal(SIGINT) failed");
 	}
