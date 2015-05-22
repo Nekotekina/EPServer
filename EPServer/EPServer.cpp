@@ -664,7 +664,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		}
 	}
 
-	listener->push_text(ep_version); // TODO: print greeting, git version info and something else
+	listener->push_text("EPServer git version: " GIT_VERSION); // TODO: print greeting and something else
 
 	if (account->flags.fetch_and(~PF_NEW_PLAYER) & PF_NEW_PLAYER) // new player connected
 	{
