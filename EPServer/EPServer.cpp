@@ -678,6 +678,8 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		g_listeners.broadcast(account->get_name() + "%/ connected.", only_online_players);
 	}
 
+	g_listeners.update_player(player);
+
 	// start receiver subthread (it shouldn't send data directly)
 	std::thread(receiver_thread, socket, account, player, listener).detach();
 
