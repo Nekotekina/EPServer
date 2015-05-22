@@ -8,6 +8,7 @@ if(GIT_FOUND)
 		WORKING_DIRECTORY ${SOURCE_DIR}
 		RESULT_VARIABLE EXIT_CODE
 		OUTPUT_VARIABLE GIT_VERSION)
+	execute_process(COMMAND ${GIT_EXECUTABLE} update-index --assume-unchanged git-version.inl)
 	if(NOT ${exit_code} EQUAL 0)
 		message(WARNING "git describe returned ${exit_code}, unable to include version.")
 	endif()
