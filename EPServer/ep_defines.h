@@ -174,7 +174,7 @@ struct SecureAuthRec // doesn't include ProtocolHeader
 
 struct ServerTextRec
 {
-	static const size_t max_size = 65527;
+	enum { max_size = 65527 };
 
 	ProtocolHeader header;
 	f64 stamp; // message timestamp (OLE automation time)
@@ -182,14 +182,14 @@ struct ServerTextRec
 
 	static inline packet_data_t generate(f64 stamp, const char* text, size_t size)
 	{
-		const u16 tsize = static_cast<u16>(std::min<size_t>(size, max_size)); // text size
+		const u16 tsize = static_cast<u16>(std::min<size_t>(size, max_size)) + 8; // data size
 
-		packet_data_t packet(tsize + 11);
+		packet_data_t packet(tsize + 3);
 
 		auto rec = packet.get<ServerTextRec>();
-		rec->header = { SERVER_TEXT, tsize + u16{ 8 } };
+		rec->header = { SERVER_TEXT, tsize };
 		rec->stamp = stamp;
-		std::memcpy(rec->data, text, tsize);
+		std::memcpy(rec->data, text, tsize - 8);
 
 		return packet;
 	}
