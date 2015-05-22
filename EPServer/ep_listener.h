@@ -12,6 +12,8 @@ class listener_t final
 public:
 	const std::shared_ptr<player_t> player;
 
+	std::atomic_flag quit_flag;
+
 	explicit listener_t(const std::shared_ptr<player_t>& player);
 
 	void push_packet(const packet_t& packet);
@@ -41,7 +43,7 @@ class listener_list_t final
 public:
 	std::shared_ptr<listener_t> add_listener(const std::shared_ptr<player_t>& player);
 
-	void remove_listener(const listener_t* listener);
+	u32 remove_listener(const listener_t* listener);
 
 	void update_player(const std::shared_ptr<player_t>& player, bool removed = false);
 

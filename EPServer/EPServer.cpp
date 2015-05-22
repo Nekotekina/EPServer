@@ -13,6 +13,8 @@
 
 const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(ep_version, strlen(ep_version)) };
 
+std::chrono::system_clock::time_point g_start_time = std::chrono::system_clock::now();
+
 account_list_t g_accounts;
 player_list_t g_players;
 listener_list_t g_listeners;
@@ -27,27 +29,22 @@ mpz_class g_key_n; // open key
 mpz_class g_key_d; // priv key
 u32 g_key_size = 0; // key size (bytes)
 
+static bool only_online_players(listener_t& listener)
+{
+	return (listener.player->account->flags & PF_OFF) == 0;
+}
+
+static bool all_players(listener_t& listener)
+{
+	return true;
+}
+
 void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t> account, std::shared_ptr<player_t> player, std::shared_ptr<listener_t> listener)
 {
-	auto only_online_players = [](listener_t& l){ return (l.player->account->flags & PF_OFF) == 0; };
-	auto all_players = [](listener_t& l){ return true; };
-
-	std::unique_ptr<listener_t, void(*)(listener_t*)> finalizer(listener.get(), [](listener_t* listener)
+	std::unique_ptr<listener_t, void(*)(listener_t*)> listener_stopper(listener.get(), [](listener_t* listener) // scope exit
 	{
-		// execute at thread exit
 		listener->stop();
 	});
-
-	if (account->flags.fetch_and(~PF_NEW_PLAYER) & PF_NEW_PLAYER)
-	{
-		g_listeners.broadcast(account->get_name() + "%/ connected as a new player.", only_online_players);
-	}
-	else if (player->conn_count <= 1)
-	{
-		g_listeners.broadcast(account->get_name() + "%/ connected.", only_online_players);
-	}
-
-	// TODO: send greeting
 
 	std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -413,7 +410,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 			case SCMD_HIDE:
 			{
-				if ((account->flags.fetch_or(PF_OFF) & PF_OFF) == 0)
+				if (~account->flags.fetch_or(PF_OFF) & PF_OFF)
 				{
 					const s32 index = player->index;
 					g_listeners.broadcast(account->get_name() + "%/ is offline.", [=](listener_t& l){ return (l.player->account->flags & PF_OFF) == 0 || l.player->index == index; });
@@ -444,23 +441,15 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 			case SCMD_QUIT:
 			{
-				if (player->conn_count > 1)
-				{
-					// TODO (messages)
-				}
-				else if (account->flags & PF_LOCK)
+				// Quit manually
+
+				if (account->flags & PF_LOCK)
 				{
 					listener->push_text("You cannot quit now.");
 					break;
 				}
-				else
-				{
-					g_listeners.broadcast(account->get_name() + "%/ has quit.", only_online_players);
-					g_players.remove_player(player->index);
-					g_listeners.update_player(player, true);
-				}
 
-				// Quit manually
+				listener->quit_flag.test_and_set();
 				return;
 			}
 
@@ -632,10 +621,24 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		return;
 	}
 
-	std::unique_ptr<listener_t, void(*)(listener_t*)> finalizer(listener.get(), [](listener_t* listener)
+	std::unique_ptr<listener_t, void(*)(listener_t*)> listener_remover(listener.get(), [](listener_t* listener) // scope exit
 	{
-		// execute at thread exit
-		g_listeners.remove_listener(listener);
+		if (g_listeners.remove_listener(listener) == 0 && ~listener->player->account->flags.fetch_or(PF_LOST) & PF_LOST)
+		{
+			// connection lost
+
+			// check if the quit command has been sent
+			if (listener->quit_flag.test_and_set())
+			{
+				g_listeners.broadcast(listener->player->account->get_name() + "%/ has quit.", only_online_players);
+				g_players.remove_player(listener->player->index);
+				g_listeners.update_player(listener->player, true);
+			}
+			else
+			{
+				g_listeners.update_player(listener->player);
+			}
+		}
 	});
 
 	{
@@ -649,8 +652,19 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		}
 	}
 
-	account->flags &= ~PF_LOST; // TODO (?)
-	g_listeners.update_player(player);
+	listener->push_text(ep_version); // TODO: print greeting, git version info and something else
+
+	if (account->flags.fetch_and(~PF_NEW_PLAYER) & PF_NEW_PLAYER) // new player connected
+	{
+		g_listeners.update_player(player);
+		g_listeners.broadcast(account->get_name() + "%/ connected as a new player.", only_online_players);
+	}
+
+	if (account->flags.fetch_and(~PF_LOST) & PF_LOST) // connection restored
+	{
+		g_listeners.update_player(player);
+		g_listeners.broadcast(account->get_name() + "%/ connected.", only_online_players);
+	}
 
 	// start receiver subthread (it shouldn't send data directly)
 	std::thread(receiver_thread, socket, account, player, listener).detach();
@@ -660,12 +674,6 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		if (!socket->put(packet->get<void>(), packet->size()))
 		{
-			if (player->conn_count <= 1)
-			{
-				account->flags |= PF_LOST; // TODO (?)
-				g_listeners.update_player(player);
-			}
-
 			printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
@@ -699,7 +707,7 @@ int main(int arg_count, const char* args[])
 {
 #ifdef __unix__
 	XInitThreads();
-	signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE
+	//signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE
 #endif
 
 	if (signal(SIGINT, stop) == SIG_ERR)
@@ -707,7 +715,8 @@ int main(int arg_count, const char* args[])
 		printf("signal(SIGINT) failed");
 	}
 
-	printf("EPServer version: '%s'\n", ep_version);
+	printf("EPServer version info: unknown\n"); // TODO: git version
+	printf("EPServer client version: '%s'\n", ep_version);
 
 	printf("ipv4.dat not loaded!\n"); // TODO: load IP db
 	printf("ipv6.dat not loaded!\n"); // TODO: IPv6 support

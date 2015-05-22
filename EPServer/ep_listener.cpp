@@ -7,6 +7,7 @@
 listener_t::listener_t(const std::shared_ptr<player_t>& player)
 	: player(player)
 {
+	quit_flag.clear();
 }
 
 void listener_t::push_packet(const packet_t& packet)
@@ -77,7 +78,7 @@ std::shared_ptr<listener_t> listener_list_t::add_listener(const std::shared_ptr<
 	return m_list.back();
 }
 
-void listener_list_t::remove_listener(const listener_t* listener)
+u32 listener_list_t::remove_listener(const listener_t* listener)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -85,12 +86,13 @@ void listener_list_t::remove_listener(const listener_t* listener)
 	{
 		if (i->get() == listener)
 		{
-			listener->player->conn_count--;
-
-			m_list.erase(i);
-			return;
+			// remove listener and return new conn_count value
+			return m_list.erase(i), --listener->player->conn_count;
 		}
 	}
+
+	// TODO: this shouldn't happen
+	return listener->player->conn_count;
 }
 
 void listener_list_t::update_player(const std::shared_ptr<player_t>& player, bool removed)

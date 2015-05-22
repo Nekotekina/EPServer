@@ -12,6 +12,7 @@
 #include <winsock2.h>
 #define GETERROR WSAGetLastError()
 #define DROP(sid) closesocket(sid)
+#define MSG_NOSIGNAL 0
 using socket_id_t = SOCKET;
 using inaddr_t = IN_ADDR;
 using socklen_t = int;
@@ -73,7 +74,7 @@ public:
 	// send data
 	virtual bool put(const void* data, u32 size)
 	{
-		return send(socket, static_cast<const char*>(data), size, 0) == size;
+		return send(socket, static_cast<const char*>(data), size, MSG_NOSIGNAL) == size;
 	}
 
 	// send data
