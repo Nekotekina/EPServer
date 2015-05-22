@@ -11,6 +11,8 @@
 #include <mpirxx.h>
 #pragma warning(pop)
 
+#include "../git-version.inl"
+
 const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(ep_version, strlen(ep_version)) };
 
 std::chrono::system_clock::time_point g_start_time = std::chrono::system_clock::now();
@@ -725,7 +727,7 @@ int main(int arg_count, const char* args[])
 		std::printf("signal(SIGINT) failed");
 	}
 
-	std::printf("EPServer version info: unknown\n"); // TODO: git version
+	std::printf("EPServer git version: " GIT_VERSION "\n");
 	std::printf("EPServer client version: '%s'\n", ep_version);
 
 	std::printf("ipv4.dat not loaded!\n"); // TODO: load IP db

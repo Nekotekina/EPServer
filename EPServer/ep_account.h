@@ -17,7 +17,7 @@ public:
 
 	std::string get_name()
 	{
-		return uniq_name.length ? uniq_name : name;
+		return uniq_name.length ? std::string(uniq_name) : std::string(name);
 	}
 };
 

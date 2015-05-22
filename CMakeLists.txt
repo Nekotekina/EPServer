@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 2.8)
 
 project(EPServer)
 
+add_custom_target(git_version ALL DEPENDS all_dep)
+
+add_custom_command(OUTPUT all_dep COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/git-version.cmake)
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread")
 
 if (WIN32)

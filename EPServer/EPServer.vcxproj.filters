@@ -67,4 +67,7 @@
   <ItemGroup>
     <Text Include="..\CMakeLists.txt" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\git-version.inl" />
+  </ItemGroup>
 </Project>
