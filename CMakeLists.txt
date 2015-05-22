@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 2.8)
 
 project(EPServer)
 
-add_custom_target(git_version ALL DEPENDS all_dep)
+add_custom_target(git_version ALL DEPENDS git_version_aux)
 
-add_custom_command(OUTPUT all_dep COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/git-version.cmake)
+add_custom_command(OUTPUT git_version_aux COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/git-version.cmake)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread")
 
@@ -30,3 +30,5 @@ endif()
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	target_link_libraries(epserver X11)
 endif()
+
+add_dependencies(epserver git_version)
