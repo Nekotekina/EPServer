@@ -7,25 +7,17 @@ union rc6_block_t
 	u32 i[4];
 	__m128i vi;
 
-	void* operator new(size_t size)
-	{
-		return _mm_malloc(size, __alignof(rc6_block_t));
-	}
+	// Attempt to fix heap allocation alignment on x86 version (disabled):
+	
+	//void* operator new[](size_t size)
+	//{
+	//	return _mm_malloc(size, __alignof(rc6_block_t));
+	//}
 
-	void* operator new[](size_t size)
-	{
-		return _mm_malloc(size, __alignof(rc6_block_t));
-	}
-
-	void operator delete(void* p)
-	{
-		return _mm_free(p);
-	}
-
-	void operator delete[](void* p)
-	{
-		return _mm_free(p);
-	}
+	//void operator delete[](void* p)
+	//{
+	//	return _mm_free(p);
+	//}
 };
 
 class rc6_cipher_t final

@@ -15,8 +15,6 @@
 
 const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(ep_version, strlen(ep_version)) };
 
-std::chrono::system_clock::time_point g_start_time = std::chrono::system_clock::now();
-
 account_list_t g_accounts;
 player_list_t g_players;
 listener_list_t g_listeners;
@@ -50,27 +48,21 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 	std::this_thread::sleep_for(std::chrono::seconds(1));
 
-	while (true)
+	ProtocolHeader header;
+	ClientCmdRec cmd;
+
+	while (socket->flush(), socket->get(header))
 	{
-		socket->flush();
-
-		ProtocolHeader header;
-		if (!socket->get(header))
-		{
-			return;
-		}
-
 		// TODO: reset last activity time
 
 		if (header.code == CLIENT_CMD && header.size >= 14)
 		{
-			ClientCmdRec cmd;
+			const u16 text_size = header.size - 14;
+
 			if (!socket->get(&cmd, header.size))
 			{
 				return;
 			}
-
-			size_t text_size = header.size - 14;
 
 			switch (cmd.cmd)
 			{
@@ -207,7 +199,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				else if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
 				{
 					account->email = short_str_t<255>::make(cmd.data, text_size);
-					listener->push_text("E-mail:");
+					listener->push_text("E-mail set:");
 					listener->push_text(account->email);
 
 					g_accounts.save();
@@ -475,8 +467,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 		{
 			listener->push_text("Invalid command (code=" + std::to_string(header.code) + ", size=" + std::to_string(header.size) + ")");
 
-			u8 raw[65535];
-			if (!socket->get(raw, header.size))
+			if (!socket->get(&cmd, header.size))
 			{
 				return;
 			}
@@ -709,14 +700,9 @@ void stop(int x)
 	g_server.close();
 }
 
-#ifdef __unix__
-#include <X11/Xlib.h>
-#endif
-
 int main(int arg_count, const char* args[])
 {
 #ifdef __unix__
-	XInitThreads();
 	//std::signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE (disabled)
 #endif
 

@@ -180,7 +180,7 @@ struct ServerTextRec
 	f64 stamp; // message timestamp (OLE automation time)
 	char data[max_size]; // utf-8 text
 
-	static inline packet_data_t generate(f64 stamp, const char* text, size_t size)
+	static packet_data_t generate(f64 stamp, const char* text, size_t size)
 	{
 		const u16 tsize = static_cast<u16>(std::min<size_t>(size, max_size)) + 8; // data size
 
@@ -194,7 +194,7 @@ struct ServerTextRec
 		return packet;
 	}
 
-	static inline packet_data_t generate(f64 stamp, const std::string& text)
+	static packet_data_t generate(f64 stamp, const std::string& text)
 	{
 		return generate(stamp, text.c_str(), text.size());
 	}
@@ -202,13 +202,13 @@ struct ServerTextRec
 
 struct ClientCmdRec // doesn't include ProtocolHeader
 {
-	static const u16 max_data_size = 65521;
+	enum { max_size = 65521 };
 
 	u16 cmd;
 	s32 v0;
 	s32 v1;
 	s32 v2;
-	char data[max_data_size];
+	char data[max_size];
 };
 
 struct ClientSCmdRec

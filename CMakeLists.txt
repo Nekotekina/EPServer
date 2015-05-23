@@ -27,8 +27,4 @@ if (WIN32)
 	target_link_libraries(epserver ws2_32)
 endif()
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-	target_link_libraries(epserver X11)
-endif()
-
 add_dependencies(epserver git_version)
