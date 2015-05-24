@@ -115,6 +115,8 @@ std::shared_ptr<account_t> account_list_t::add_account(short_str_t<16> name, md5
 		}
 	}
 
+	ep_printf("New account registered: %s\n", name.c_str().get());
+
 	std::shared_ptr<account_t> acc(new account_t);
 	acc->name = name;
 	acc->pass = pass;

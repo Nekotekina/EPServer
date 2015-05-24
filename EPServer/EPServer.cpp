@@ -479,38 +479,36 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 {
 	auto message = [](socket_t& socket, const char* text)
 	{
-		packet_data_t packet = ServerTextRec::generate(GetTime(), text, strlen(text));
+		const packet_data_t packet = ServerTextRec::generate(GetTime(), text, strlen(text));
 
 		socket.put(packet.get(), packet.size());
 	};
 
-	if (send(aid, g_auth_packet.get(), g_auth_packet.size(), 0) != g_auth_packet.size())
+	// initialize socket_t without encryption
+	std::shared_ptr<socket_t> socket(new socket_t(aid));
+
+	ProtocolHeader header;
+
+	// send auth packet and receive header
+	if (!socket->put(g_auth_packet.get(), g_auth_packet.size()) || !socket->get(header))
 	{
-		socket_t socket(aid);
-		std::printf("- %s:%d (I)\n", inet_ntoa(ip), port);
-		socket.put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
+		ep_printf_ip("-- (AUTH-1)\n", ip, port);
 		return;
 	}
-
-	std::shared_ptr<socket_t> socket;
 
 	std::shared_ptr<account_t> account;
 
 	{
 		packet_data_t auth_info;
 
-		ProtocolHeader header;
-
 		// validate auth packet content
-		if (recv(aid, (char*)&header, 3, MSG_WAITALL) != 3 ||
-			(header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
+		if ((header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
 			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
-			(auth_info.reset(header.size), recv(aid, auth_info.get(), header.size, MSG_WAITALL) != header.size))
+			(auth_info.reset(header.size), !socket->get(auth_info.get(), header.size)))
 		{
-			socket_t socket(aid);
-			std::printf("- %s:%d (II)\n", inet_ntoa(ip), port);
-			message(socket, "Invalid auth packet");
-			socket.put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
+			ep_printf_ip("-- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
+			message(*socket, "Invalid auth packet");
+			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
 
@@ -531,7 +529,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 			{
 				auth_info.get<u8>()[i] = static_cast<u8>(num.get_ui());
 				num >>= 8;
-				
+
 				if (num == 0)
 				{
 					// fix data displacement (allocate new block)
@@ -554,15 +552,9 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 				// copy session key
 				memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size());
 
-				// initialize socket with encryption
-				socket.reset(new cipher_socket_t(aid, std::move(key)));
+				// re-initialize with encryption
+				socket.reset(new cipher_socket_t(socket->release(), std::move(key)));
 			}
-		}
-		
-		if (!socket)
-		{
-			// initialize socket without encryption
-			socket.reset(new socket_t(aid));
 		}
 
 		auto auth = auth_info.get<ClientAuthRec>();
@@ -570,7 +562,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		// check login
 		if (auth->name.length > 16 || !IsLoginValid(auth->name.data, auth->name.length))
 		{
-			std::printf("- %s:%d (III)\n", inet_ntoa(ip), port);
+			ep_printf_ip("-- (AUTH-3) (%d)\n", ip, port, auth->name.length);
 			message(*socket, "Invalid login");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -582,10 +574,12 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		MD5().MD5Update(&ctx, auth->pass.data(), 16); // calculate md5 from md5(password) arrived
 		MD5().MD5Final(auth->pass.data(), &ctx);
 
+		ep_printf_ip("** LOGIN: %s\n", ip, port, auth->name.c_str().get());
+
 		// find or create account
 		if (!(account = g_accounts.add_account(auth->name, auth->pass)))
 		{
-			std::printf("- %s:%d (IV)\n", inet_ntoa(ip), port); // TODO: messages (wrong password)
+			ep_printf_ip("-- (AUTH-4)\n", ip, port);
 			message(*socket, "Invalid password");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -594,19 +588,17 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 	if (account->flags & PF_NOCONNECT)
 	{
-		std::printf("- %s:%d (V)\n", inet_ntoa(ip), port);
+		ep_printf_ip("-- (AUTH-5)\n", ip, port);
 		message(*socket, "Account is banned");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
 
-	g_accounts.save(); // TODO: remove
-
 	std::shared_ptr<player_t> player = g_players.add_player(account);
 
 	if (!player)
 	{
-		std::printf("- %s:%d (VI)\n", inet_ntoa(ip), port);
+		ep_printf_ip("-- (AUTH-6)\n", ip, port);
 		message(*socket, "Too many players connected");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
@@ -616,7 +608,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 	if (!listener)
 	{
-		std::printf("- %s:%d (VII)\n", inet_ntoa(ip), port);
+		ep_printf_ip("-- (AUTH-7)\n", ip, port);
 		message(*socket, "Too many connections");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
@@ -647,7 +639,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 		if (!socket->put(version_info) || !socket->put(plist.get(), plist.size()))
 		{
-			std::printf("- %s:%d (VIII)\n", inet_ntoa(ip), port);
+			ep_printf_ip("-- (LOST)\n", ip, port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
@@ -659,6 +651,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		g_listeners.update_player(player);
 		g_listeners.broadcast(account->get_name() + "%/ connected as a new player.", only_online_players);
+		g_accounts.save();
 	}
 
 	if (account->flags.fetch_and(~PF_LOST) & PF_LOST) // connection restored
@@ -677,14 +670,14 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		if (!socket->put(packet->get<void>(), packet->size()))
 		{
-			std::printf("- %s:%d (IX)\n", inet_ntoa(ip), port);
+			ep_printf_ip("-- (LOST)\n", ip, port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
 	}
 
 	// connection closed
-	std::printf("- %s:%d (X)\n", inet_ntoa(ip), port);
+	ep_printf_ip("-- (CLOSED)\n", ip, port);
 	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 }
 
@@ -702,6 +695,8 @@ void stop(int x)
 
 int main(int arg_count, const char* args[])
 {
+	ep_printf("\n");
+
 #ifdef __unix__
 	//std::signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE (disabled)
 #endif
@@ -857,11 +852,11 @@ int main(int arg_count, const char* args[])
 
 		if (aid == INVALID_SOCKET)
 		{
-			std::printf("EPServer stopped.\n");
+			ep_printf("EPServer stopped.\n");
 			return 0;
 		}
 
-		std::printf("+ %s:%d\n", inet_ntoa(info.sin_addr), info.sin_port);
+		ep_printf_ip("++\n", info.sin_addr, info.sin_port);
 
 		// start client thread
 		std::thread(sender_thread, aid, info.sin_addr, info.sin_port).detach();

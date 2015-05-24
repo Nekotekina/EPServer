@@ -4,11 +4,6 @@
 
 #ifdef _WIN32
 
-#if defined(_MSC_VER)
-#define _WINSOCK_DEPRECATED_NO_WARNINGS // TODO
-#pragma comment(lib, "ws2_32.lib")
-#endif
-
 #include <winsock2.h>
 #define GETERROR WSAGetLastError()
 #define DROP(sid) closesocket(sid)
@@ -32,33 +27,52 @@ using inaddr_t = decltype(sockaddr_in::sin_addr);
 
 #endif
 
+// Print logs with current time and specified IP:port
+template<typename... T> inline void ep_printf_ip(const char* fmt, inaddr_t ip, u16 port, T&&... args)
+{
+	ep_printf("%16s:%-6d", inet_ntoa(ip), port);
+	std::printf(fmt, std::forward<T>(args)...);
+}
+
 class socket_t
 {
 protected:
-	std::atomic<socket_id_t> socket;
+	std::atomic<socket_id_t> m_socket;
 
 public:
 	socket_t()
-		: socket(INVALID_SOCKET)
+		: m_socket(INVALID_SOCKET)
 	{
 	}
 
 	socket_t(socket_id_t socket)
-		: socket(socket)
+		: m_socket(socket)
 	{
 	}
 
 	virtual ~socket_t()
 	{
-		if (socket != INVALID_SOCKET)
+		if (m_socket != INVALID_SOCKET)
 		{
-			DROP(socket);
+			DROP(m_socket);
 		}
 	}
 
-	virtual void reset(socket_id_t socket)
+	socket_id_t release()
 	{
-		auto old_socket = this->socket.exchange(socket);
+		return m_socket.exchange(INVALID_SOCKET);
+	}
+
+	// close socket (only for server socket, temporarily)
+	void close()
+	{
+		DROP(release());
+	}
+
+	// reset socket (only for server socket, temporarily)
+	void reset(socket_id_t socket)
+	{
+		auto old_socket = m_socket.exchange(socket);
 
 		if (old_socket != INVALID_SOCKET)
 		{
@@ -66,15 +80,10 @@ public:
 		}
 	}
 
-	void close()
-	{
-		reset(INVALID_SOCKET);
-	}
-
 	// send data
 	virtual bool put(const void* data, u32 size)
 	{
-		return send(socket, static_cast<const char*>(data), size, MSG_NOSIGNAL) == size;
+		return send(m_socket, static_cast<const char*>(data), size, MSG_NOSIGNAL) == size;
 	}
 
 	// send data
@@ -86,7 +95,7 @@ public:
 	// receive data
 	virtual bool get(void* data, u32 size)
 	{
-		return recv(socket, static_cast<char*>(data), size, MSG_WAITALL) == size;
+		return recv(m_socket, static_cast<char*>(data), size, MSG_WAITALL) == size;
 	}
 
 	// receive data

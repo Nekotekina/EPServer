@@ -1,5 +1,17 @@
 ﻿#pragma once
 
+// Print logs with current time
+template<typename... T> inline void ep_printf(const char* fmt, T&&... args)
+{
+	const std::time_t now = std::time(0); // get current time
+
+	char time_buf[20];
+	std::strftime(time_buf, sizeof(time_buf), "%d-%m-%Y %I:%M:%S", std::localtime(&now));
+
+	std::printf("[%s] ", time_buf);
+	std::printf(fmt, std::forward<T>(args)...);
+}
+
 // MD5 hash container
 using md5_t = std::array<unsigned char, 16>;
 
@@ -101,6 +113,16 @@ template<u8 N = 255> struct short_str_t
 	template<u8 N2> bool operator ==(const short_str_t<N2>& right) const
 	{
 		return length == right.length && std::memcmp(data, right.data, length) == 0;
+	}
+
+	std::unique_ptr<char[]> c_str() const
+	{
+		std::unique_ptr<char[]> res(new char[length + 1]);
+
+		std::memcpy(res.get(), data, length);
+		res.get()[length] = 0;
+
+		return res;
 	}
 
 	size_t save(std::FILE* f) const
