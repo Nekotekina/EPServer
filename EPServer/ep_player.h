@@ -28,5 +28,5 @@ public:
 
 	packet_data_t generate_player_list(u32 self);
 
-	std::string get_name_by_index(u32 index);
+	std::shared_ptr<player_t> get_player(u32 index);
 };

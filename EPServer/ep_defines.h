@@ -280,7 +280,7 @@ enum ClientCmdType : u16
 	CMD_SET_FLAG = 4, // change player flag
 	CMD_DISCONNECT = 5, // disconnection request
 	CMD_INFO = 6, // get player information
-	CMD_CHANGE = 7,
+	CMD_CHANGE = 7, // (obsolete)
 	CMD_SET_NAME = 8, // change unique name
 	CMD_CALL = 9, // load account
 	CMD_SET_NOTE = 10, // set server greeting
@@ -303,8 +303,8 @@ enum ClientSpecialCmdType : u16 // SCMD commands
 	SCMD_QUIT = 0, // quit
 	SCMD_HIDE = 1, // set PF_OFF flag
 	SCMD_SHOW = 2, // remove PF_OFF flag
-	SCMD_REFRESH = 3, // obsolete command (refresh player list)
-	SCMD_TIMEOUT_QUIT = 4, // obsolete command (does nothing)
+	SCMD_REFRESH = 3, // refresh player list
+	SCMD_TIMEOUT_QUIT = 4, // (obsolete)
 	SCMD_NONE = 5, // nothing (used as keepalive)
 	SCMD_UPDATE_SERVER = 6,
 	SCMD_CONFIRMATION = 7,

@@ -158,12 +158,17 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						listener->push_text("You cannot write private messages.");
 					}
-					else
+					else if (const auto target = g_players.get_player(cmd.v0))
 					{
-						std::string dice = FormatDice(cmd.v1);
+						const std::string dice = FormatDice(cmd.v1);
 
 						g_listeners.broadcast(account->get_name() + "%/%p throws " + dice + " to you (private)", [&](listener_t& l){ return l.player->index == cmd.v0; });
-						listener->push_text("You throw " + dice + "%/ to " + g_players.get_name_by_index(cmd.v0));
+
+						listener->push_text("You throw " + dice + "%/ to " + target->account->get_name());
+					}
+					else
+					{
+						listener->push_text("Invalid player.");
 					}
 
 					// 200 ms
@@ -192,49 +197,102 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 			case CMD_SET_EMAIL:
 			{
-				if (text_size > 255)
-				{
-					listener->push_text("Invalid e-mail.");
-				}
-				else if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
+				if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
 				{
 					account->email = short_str_t<255>::make(cmd.data, text_size);
 					listener->push_text("E-mail set:");
 					listener->push_text(account->email);
 
 					g_accounts.save();
+
 					std::this_thread::sleep_for(std::chrono::seconds(1));
 				}
-				else if (account->flags & PF_SUPERADMIN)
+				else if (!cmd.v1 && !cmd.v2)
 				{
-					// find cmd.v0 player and set email
-					listener->push_text("Not implemented.");
+					if (account->flags & PF_SUPERADMIN)
+					{
+						// find cmd.v0 player and set email
+						if (const auto target = g_players.get_player(cmd.v0))
+						{
+							target->account->email = short_str_t<255>::make(cmd.data, text_size);
+							listener->push_text("E-mail set:"); // TODO (message)
+							listener->push_text(target->account->email);
+
+							g_accounts.save();
+						}
+						else
+						{
+							listener->push_text("Invalid player.");
+						}
+					}
+					else
+					{
+						listener->push_text("Check your privilege.");
+					}
 				}
 				else
 				{
-					listener->push_text("Check your privilege.");
+					listener->push_text("Invalid arguments.");
 				}
 				break;
 			}
 			case CMD_SET_PASSWORD:
 			{
-				if (text_size < 16)
-				{
-					listener->push_text("Invalid password.");
-				}
-				else if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
+				if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2 && text_size > 16)
 				{
 					// check old password and set new one
-					listener->push_text("Not implemented.");
+					md5_t old;
+
+					// calculate md5(md5(password))
+					HL_MD5_CTX ctx;
+					MD5().MD5Init(&ctx);
+					MD5().MD5Update(&ctx, reinterpret_cast<unsigned char*>(cmd.data) + 16, text_size - 16);
+					MD5().MD5Final(old.data(), &ctx);
+					MD5().MD5Init(&ctx);
+					MD5().MD5Update(&ctx, old.data(), 16);
+					MD5().MD5Final(old.data(), &ctx);
+
+					if (old == account->pass)
+					{
+						account->pass = *reinterpret_cast<md5_t*>(cmd.data);
+						listener->push_text("Password updated.");
+
+						g_accounts.save();
+					}
+					else
+					{
+						listener->push_text("Invalid password.");
+					}
+
+					std::memset(cmd.data, 0, text_size);
+
+					std::this_thread::sleep_for(std::chrono::seconds(4));
 				}
-				else if (account->flags & PF_SUPERADMIN)
+				else if (!cmd.v1 && !cmd.v2 && text_size == 16)
 				{
-					// find cmd.v0 player and set password
-					listener->push_text("Not implemented.");
+					if (account->flags & PF_SUPERADMIN)
+					{
+						// find cmd.v0 player and reset password
+						if (const auto target = g_players.get_player(cmd.v0))
+						{
+							target->account->pass = *reinterpret_cast<md5_t*>(cmd.data);
+							listener->push_text("Password updated."); // TODO (message)
+
+							g_accounts.save();
+						}
+						else
+						{
+							listener->push_text("Invalid player.");
+						}						
+					}
+					else
+					{
+						listener->push_text("Check your privilege.");
+					}
 				}
 				else
 				{
-					listener->push_text("Check your privilege.");
+					listener->push_text("Invalid arguments.");
 				}
 				break;
 			}
@@ -242,10 +300,30 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			{
 				if (account->flags & PF_SUPERADMIN)
 				{
-					if (cmd.v0 >= 0 && cmd.v1 < 64u && (1ull << cmd.v1 != PF_SUPERADMIN) && !cmd.v2)
+					const u64 flag = 1ull << cmd.v1;
+
+					if (cmd.v1 < 64u && flag != PF_SUPERADMIN && !cmd.v2)
 					{
 						// find cmd.v0 player and change flag
-						listener->push_text("Not implemented.");
+						if (const auto target = g_players.get_player(cmd.v0))
+						{
+							// TODO (message)
+
+							if (target->account->flags.fetch_xor(flag) & flag)
+							{
+								listener->push_text("Flag [" + std::string(FlagName[cmd.v1]) + "] has been removed.");
+							}
+							else
+							{
+								listener->push_text("Flag [" + std::string(FlagName[cmd.v1]) + "] has been set.");
+							}
+
+							g_accounts.save();
+						}
+						else
+						{
+							listener->push_text("Invalid player.");
+						}
 					}
 					else
 					{
@@ -263,7 +341,14 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				if (account->flags & PF_SUPERADMIN)
 				{
 					// find cmd.v0 player and disconnect it
-					listener->push_text("Not implemented.");
+					if (const auto target = g_players.get_player(cmd.v0))
+					{
+						listener->push_text("Not implemented.");
+					}
+					else
+					{
+						listener->push_text("Invalid player.");
+					}
 				}
 				else
 				{
@@ -276,7 +361,14 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				if (account->flags & PF_SUPERADMIN)
 				{
 					// find cmd.v0 player and display information
-					listener->push_text("Not implemented.");
+					if (const auto target = g_players.get_player(cmd.v0))
+					{
+						listener->push_text("Not implemented.");
+					}
+					else
+					{
+						listener->push_text("Invalid player.");
+					}
 				}
 				else
 				{
@@ -288,8 +380,14 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			{
 				if (account->flags & PF_SUPERADMIN)
 				{
-					//
-					listener->push_text("Not implemented.");
+					if (const auto target = g_players.get_player(cmd.v0))
+					{
+						listener->push_text("Not implemented.");
+					}
+					else
+					{
+						listener->push_text("Invalid player.");
+					}
 				}
 				else
 				{
@@ -302,7 +400,19 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				if (account->flags & PF_SUPERADMIN)
 				{
 					// find cmd.v0 player and set unique name
-					listener->push_text("Not implemented.");
+					if (const auto target = g_players.get_player(cmd.v0))
+					{
+						target->account->uniq_name = short_str_t<48>::make(cmd.data, text_size);
+
+						listener->push_text("Unique name set:"); // TODO (message)
+						listener->push_text(target->account->uniq_name);
+
+						g_accounts.save();
+					}
+					else
+					{
+						listener->push_text("Invalid player.");
+					}
 				}
 				else
 				{
@@ -435,7 +545,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 			case SCMD_REFRESH:
 			{
-				// Update player list (isn't really used)
+				// Update player list (it shouldn't be necessary to use it)
 				listener->push_packet(packet_t(new packet_data_t(g_players.generate_player_list(player->index))));
 
 				std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -448,7 +558,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				if (account->flags & PF_LOCK)
 				{
 					listener->push_text("You cannot quit now.");
-					break;
+					return;
 				}
 
 				listener->push_text("You have quit.");
@@ -457,7 +567,6 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 
 			default:
-			case SCMD_TIMEOUT_QUIT: // obsolete
 			{
 				listener->push_text("Invalid command (SCMD " + std::to_string(scmd) + ")");
 			}
@@ -481,7 +590,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		const packet_data_t packet = ServerTextRec::generate(GetTime(), text, strlen(text));
 
-		socket.put(packet.get(), packet.size());
+		socket.put(packet.get<void>(), packet.size());
 	};
 
 	// initialize socket_t without encryption
@@ -490,7 +599,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	ProtocolHeader header;
 
 	// send auth packet and receive header
-	if (!socket->put(g_auth_packet.get(), g_auth_packet.size()) || !socket->get(header))
+	if (!socket->put(g_auth_packet.get<void>(), g_auth_packet.size()) || !socket->get(header))
 	{
 		ep_printf_ip("-- (AUTH-1)\n", ip, port);
 		return;
@@ -550,14 +659,14 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 				packet_data_t key(32);
 
 				// copy session key
-				memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size());
+				std::memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size());
 
 				// re-initialize with encryption
 				socket.reset(new cipher_socket_t(socket->release(), std::move(key)));
 			}
 		}
 
-		auto auth = auth_info.get<ClientAuthRec>();
+		const auto auth = auth_info.get<ClientAuthRec>();
 
 		// check login
 		if (auth->name.length > 16 || !IsLoginValid(auth->name.data, auth->name.length))
@@ -637,7 +746,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		const packet_data_t plist = g_players.generate_player_list(player->index);
 
-		if (!socket->put(version_info) || !socket->put(plist.get(), plist.size()))
+		if (!socket->put(version_info) || !socket->put(plist.get<void>(), plist.size()))
 		{
 			ep_printf_ip("-- (LOST)\n", ip, port);
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
@@ -725,10 +834,10 @@ int main(int arg_count, const char* args[])
 		// get file content
 		packet_data_t keys(size + 1);
 		std::fseek(f.get(), 0, SEEK_SET);
-		std::fread(keys.get(), 1, size, f.get());
+		std::fread(keys.get<void>(), 1, size, f.get());
 
 		// data pointer
-		char* ptr = keys.get();
+		const auto ptr = keys.get();
 		
 		// string pointers
 		std::vector<char*> strings = { ptr };

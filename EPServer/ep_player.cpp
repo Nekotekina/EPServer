@@ -92,16 +92,9 @@ packet_data_t player_list_t::generate_player_list(u32 self)
 	return packet;
 }
 
-std::string player_list_t::get_name_by_index(u32 index)
+std::shared_ptr<player_t> player_list_t::get_player(u32 index)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	if (index < m_list.size() && m_list[index])
-	{
-		return m_list[index]->account->get_name();
-	}
-	else
-	{
-		return "Wrong index " + std::to_string(index);
-	}
+	return index < m_list.size() ? m_list[index] : nullptr;
 }
