@@ -603,7 +603,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	// send auth packet and receive header
 	if (!socket->put(g_auth_packet.get<void>(), g_auth_packet.size()) || !socket->get(header))
 	{
-		ep_printf_ip("-- (AUTH-1)\n", ip, port);
+		ep_printf_ip("%s", ip, port, "-- (AUTH-1)\n");
 		return;
 	}
 
@@ -690,7 +690,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		// find or create account
 		if (!(account = g_accounts.add_account(auth->name, auth->pass)))
 		{
-			ep_printf_ip("-- (AUTH-4)\n", ip, port);
+			ep_printf_ip("%s", ip, port, "-- (AUTH-4)\n");
 			message(*socket, "Invalid password");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -699,7 +699,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 	if (account->flags & PF_NOCONNECT)
 	{
-		ep_printf_ip("-- (AUTH-5)\n", ip, port);
+		ep_printf_ip("%s", ip, port, "-- (AUTH-5)\n");
 		message(*socket, "Account is banned");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
@@ -709,7 +709,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 	if (!player)
 	{
-		ep_printf_ip("-- (AUTH-6)\n", ip, port);
+		ep_printf_ip("%s", ip, port, "-- (AUTH-6)\n");
 		message(*socket, "Too many players connected");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
@@ -719,7 +719,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 	if (!listener)
 	{
-		ep_printf_ip("-- (AUTH-7)\n", ip, port);
+		ep_printf_ip("%s", ip, port, "-- (AUTH-7)\n");
 		message(*socket, "Too many connections");
 		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 		return;
@@ -751,7 +751,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 
 		if (!socket->put(version_info) || !socket->put(plist.get<void>(), plist.size()))
 		{
-			ep_printf_ip("-- (LOST)\n", ip, port);
+			ep_printf_ip("%s", ip, port, "-- (LOST)\n");
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
@@ -783,14 +783,14 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	{
 		if (!socket->put(packet->get<void>(), packet->size()))
 		{
-			ep_printf_ip("-- (LOST)\n", ip, port);
+			ep_printf_ip("%s", ip, port, "-- (LOST)\n");
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
 	}
 
 	// connection closed
-	ep_printf_ip("-- (CLOSED)\n", ip, port);
+	ep_printf_ip("%s", ip, port, "-- (CLOSED)\n");
 	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 }
 
@@ -808,7 +808,7 @@ void stop(int x)
 
 int main(int arg_count, const char* args[])
 {
-	ep_printf("\n");
+	ep_printf("%s", "\n");
 
 #ifdef __unix__
 	//std::signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE (disabled)
@@ -965,11 +965,11 @@ int main(int arg_count, const char* args[])
 
 		if (aid == INVALID_SOCKET)
 		{
-			ep_printf("EPServer stopped.\n");
+			ep_printf("%s", "EPServer stopped.\n");
 			return 0;
 		}
 
-		ep_printf_ip("++\n", info.sin_addr, info.sin_port);
+		ep_printf_ip("%s", info.sin_addr, info.sin_port, "++\n");
 
 		// start client thread
 		std::thread(sender_thread, aid, info.sin_addr, info.sin_port).detach();

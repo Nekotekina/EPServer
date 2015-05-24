@@ -1,10 +1,10 @@
 ﻿#pragma once
 
 // Print logs with current time
-template<size_t N, typename... T> inline void ep_printf(const char(&fmt)[N], T... args)
+template<typename... T> inline void ep_printf(const char* fmt, T&&... args)
 {
 	print_time();
-	std::printf(fmt, args...);
+	std::printf(fmt, std::forward<T>(args)...);
 }
 
 // MD5 hash container
