@@ -48,3 +48,5 @@ struct FILE_deleter
 };
 
 using unique_FILE = std::unique_ptr<std::FILE, FILE_deleter>;
+
+void print_time();

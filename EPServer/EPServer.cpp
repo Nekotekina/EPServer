@@ -74,18 +74,21 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 				if (message.find("%p") != std::string::npos)
 				{
-					listener->push_text("You cannot send %%p marker.\n" + message);
+					listener->push_text("You cannot send %%p marker.");
+					listener->push_text(message);
 				}
 				else if (message.find("%/") != std::string::npos)
 				{
-					listener->push_text("You cannot send %%/ marker.\n" + message);
+					listener->push_text("You cannot send %%/ marker.");
+					listener->push_text(message);
 				}
 				else if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
 				{
 					// public message
 					if (account->flags & PF_NOCHAT)
 					{
-						listener->push_text("You cannot write public messages.\n" + message);
+						listener->push_text("You cannot write public messages.");
+						listener->push_text(message);
 					}
 					else
 					{
@@ -106,7 +109,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					// private message
 					if (account->flags & PF_NOPRIVCHAT)
 					{
-						listener->push_text("You cannot write private messages.\n" + message);
+						listener->push_text("You cannot write private messages.");
+						listener->push_text(message);
 					}
 					else
 					{
@@ -118,9 +122,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				}
 				else
 				{
-					listener->push_text("Invalid command (CMD_CHAT, v0=" + std::to_string(cmd.v0) + ", v1=" + std::to_string(cmd.v1) + ", v2=" + std::to_string(cmd.v2) + ")\n" + message);
+					listener->push_text("Invalid arguments.");
 				}
-
 				break;
 			}
 			case CMD_DICE:
@@ -176,9 +179,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				}
 				else
 				{
-					listener->push_text("Invalid command (CMD_DICE, v0=" + std::to_string(cmd.v0) + ", v1=" + std::to_string(cmd.v1) + ", v2=" + std::to_string(cmd.v2) + ")");
+					listener->push_text("Invalid arguments.");
 				}
-
 				break;
 			}
 			case CMD_SHOUT:
@@ -738,6 +740,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 			}
 			else
 			{
+				g_listeners.broadcast(listener->player->account->get_name() + "%/ lost connection with server.", only_online_players);
 				g_listeners.update_player(listener->player);
 			}
 		}
@@ -762,14 +765,15 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		g_listeners.broadcast(account->get_name() + "%/ connected as a new player.", only_online_players);
 		g_accounts.save();
 	}
-
-	if (account->flags.fetch_and(~PF_LOST) & PF_LOST) // connection restored
+	else if (account->flags.fetch_and(~PF_LOST) & PF_LOST) // connection restored
 	{
 		g_listeners.update_player(player);
 		g_listeners.broadcast(account->get_name() + "%/ connected.", only_online_players);
 	}
-
-	g_listeners.update_player(player); // silent reconnection
+	else
+	{
+		g_listeners.update_player(player); // silent reconnection
+	}
 
 	// start receiver subthread (it shouldn't send data directly)
 	std::thread(receiver_thread, socket, account, player, listener).detach();

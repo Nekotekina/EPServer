@@ -1,15 +1,10 @@
 ﻿#pragma once
 
 // Print logs with current time
-template<typename... T> inline void ep_printf(const char* fmt, T&&... args)
+template<size_t N, typename... T> inline void ep_printf(const char(&fmt)[N], T... args)
 {
-	const std::time_t now = std::time(0); // get current time
-
-	char time_buf[20];
-	std::strftime(time_buf, sizeof(time_buf), "%d-%m-%Y %I:%M:%S", std::localtime(&now));
-
-	std::printf("[%s] ", time_buf);
-	std::printf(fmt, std::forward<T>(args)...);
+	print_time();
+	std::printf(fmt, args...);
 }
 
 // MD5 hash container
@@ -87,10 +82,8 @@ template<u8 N = 255> struct short_str_t
 {
 	static_assert(N, "Invalid short_str_t size");
 
-	static const u8 size = N;
-
 	u8 length;
-	char data[size];
+	char data[N];
 
 	static short_str_t make(const void* ptr, size_t len)
 	{
@@ -400,7 +393,7 @@ static bool IsLoginValid(const char* str, size_t len)
 // Get current time in days after midnight, 30 December 1899 (OLE automation time)
 static f64 GetTime()
 {
-	std::time_t now = std::time(0);
+	const std::time_t now = std::time(0);
 
 	auto tm = std::gmtime(&now); // get UTC time
 
