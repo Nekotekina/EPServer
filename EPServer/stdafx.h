@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <csignal>
 #include <cstdint>
+#include <climits>
 #include <cstddef>
 #include <cstring>
 #include <ctime>
