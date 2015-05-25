@@ -16,14 +16,14 @@ static_assert(sizeof(md5_t) == 16, "Invalid md5_t size");
 class packet_data_t
 {
 	std::unique_ptr<char[]> m_data;
-	u32 m_size = 0;
+	std::size_t m_size = 0;
 
 public:
 	packet_data_t()
 	{
 	}
 
-	explicit packet_data_t(u32 size)
+	explicit packet_data_t(std::size_t size)
 		: m_data(new char[size])
 		, m_size(size)
 	{
@@ -65,7 +65,7 @@ public:
 		return reinterpret_cast<T*>(m_data.get());
 	}
 
-	u32 size() const
+	std::size_t size() const
 	{
 		return m_size;
 	}
@@ -85,10 +85,10 @@ template<u8 N = 255> struct short_str_t
 	u8 length;
 	char data[N];
 
-	static short_str_t make(const void* ptr, size_t len)
+	static short_str_t make(const void* ptr, std::size_t len)
 	{
 		short_str_t res;
-		std::memcpy(res.data, ptr, res.length = static_cast<u8>(std::min<size_t>(len, N)));
+		std::memcpy(res.data, ptr, res.length = static_cast<u8>(std::min<std::size_t>(len, N)));
 		std::memset(res.data + res.length, 0, N - res.length);
 		return res;
 	}
@@ -118,18 +118,18 @@ template<u8 N = 255> struct short_str_t
 		return res;
 	}
 
-	size_t save(std::FILE* f) const
+	std::size_t save(std::FILE* f) const
 	{
-		size_t res = 0;
+		std::size_t res = 0;
 		res += std::fwrite(&length, 1, 1, f);
 		res += std::fwrite(data, 1, length, f);
 		return res;
 	}
 
-	size_t load(std::FILE* f)
+	std::size_t load(std::FILE* f)
 	{
 		*this = {};
-		size_t res = 0;
+		std::size_t res = 0;
 		res += std::fread(&length, 1, 1, f);
 		res += std::fread(data, 1, length, f);
 		return res;
@@ -195,13 +195,13 @@ struct ServerTextRec
 	f64 stamp; // message timestamp (OLE automation time)
 	char data[max_size]; // utf-8 text
 
-	static packet_data_t generate(f64 stamp, const char* text, size_t size)
+	static packet_t generate(f64 stamp, const char* text, std::size_t size)
 	{
-		const u16 tsize = static_cast<u16>(std::min<size_t>(size, max_size)) + 8; // data size
+		const u16 tsize = static_cast<u16>(std::min<std::size_t>(size, max_size)) + 8; // data size
 
-		packet_data_t packet(tsize + 3);
+		packet_t packet = std::make_shared<packet_data_t>(tsize + 3);
 
-		auto rec = packet.get<ServerTextRec>();
+		const auto rec = packet->get<ServerTextRec>();
 		rec->header = { SERVER_TEXT, tsize };
 		rec->stamp = stamp;
 		std::memcpy(rec->data, text, tsize - 8);
@@ -209,7 +209,7 @@ struct ServerTextRec
 		return packet;
 	}
 
-	static packet_data_t generate(f64 stamp, const std::string& text)
+	static packet_t generate(f64 stamp, const std::string& text)
 	{
 		return generate(stamp, text.c_str(), text.size());
 	}
@@ -245,7 +245,7 @@ struct PlayerElement
 	s32 gindex;
 };
 
-static const size_t MAX_PLAYERS = 65527 / sizeof(PlayerElement);
+static const std::size_t MAX_PLAYERS = 65527 / sizeof(PlayerElement);
 
 struct ServerListRec
 {
@@ -366,7 +366,7 @@ static std::string FormatDice(const s32 data)
 	return std::to_string(dice.count) + "d" + std::to_string(dice.size) + format_add(dice.add) + " = " + std::to_string(res);
 }
 
-static bool IsLoginValid(const char* str, size_t len)
+static bool IsLoginValid(const char* str, std::size_t len)
 {
 	if (!len) return false;
 

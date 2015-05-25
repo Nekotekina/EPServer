@@ -9,7 +9,7 @@ union rc6_block_t
 
 	// Attempt to fix heap allocation alignment on x86 version (disabled):
 	
-	//void* operator new[](size_t size)
+	//void* operator new[](std::size_t size)
 	//{
 	//	return _mm_malloc(size, __alignof(rc6_block_t));
 	//}

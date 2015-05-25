@@ -26,7 +26,7 @@ public:
 
 	bool remove_player(u32 index);
 
-	packet_data_t generate_player_list(u32 self);
+	packet_t generate_player_list(u32 self);
 
 	std::shared_ptr<player_t> get_player(u32 index);
 };

@@ -42,8 +42,7 @@ std::shared_ptr<player_t> player_list_t::add_player(const std::shared_ptr<accoun
 	{
 		if (!m_list[index])
 		{
-			m_list[index].reset(new player_t(account, index));
-			return m_list[index];
+			return m_list[index] = std::make_shared<player_t>(account, index);
 		}
 	}
 
@@ -52,7 +51,7 @@ std::shared_ptr<player_t> player_list_t::add_player(const std::shared_ptr<accoun
 		return nullptr;
 	}
 
-	m_list.emplace_back(new player_t(account, index));
+	m_list.emplace_back(std::make_shared<player_t>(account, index));
 	return m_list.back();
 }
 
@@ -69,15 +68,15 @@ bool player_list_t::remove_player(u32 index)
 	return false;
 }
 
-packet_data_t player_list_t::generate_player_list(u32 self)
+packet_t player_list_t::generate_player_list(u32 self)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
 	const u16 hsize = static_cast<u16>(8 + sizeof(PlayerElement) * m_list.size());
 
-	packet_data_t packet(hsize + 3);
+	packet_t packet = std::make_shared<packet_data_t>(hsize + 3);
 
-	auto data = packet.get<ServerListRec>();
+	const auto data = packet->get<ServerListRec>();
 	data->header = { SERVER_PLIST, hsize };
 	data->self = self;
 	data->count = static_cast<u32>(m_list.size());

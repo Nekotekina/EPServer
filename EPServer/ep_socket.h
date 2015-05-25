@@ -82,9 +82,14 @@ public:
 	}
 
 	// send data
-	virtual bool put(const void* data, u32 size)
+	virtual bool put(const void* data, std::size_t size)
 	{
-		return send(m_socket, static_cast<const char*>(data), size, MSG_NOSIGNAL) == size;
+		if (size > INT_MAX)
+		{
+			return false; // TODO
+		}
+
+		return send(m_socket, static_cast<const char*>(data), static_cast<int>(size), MSG_NOSIGNAL) == size;
 	}
 
 	// send data
@@ -94,9 +99,14 @@ public:
 	}
 
 	// receive data
-	virtual bool get(void* data, u32 size)
+	virtual bool get(void* data, std::size_t size)
 	{
-		return recv(m_socket, static_cast<char*>(data), size, MSG_WAITALL) == size;
+		if (size > INT_MAX)
+		{
+			return false; // TODO
+		}
+
+		return recv(m_socket, static_cast<char*>(data), static_cast<int>(size), MSG_WAITALL) == size;
 	}
 
 	// receive data
@@ -138,9 +148,9 @@ public:
 		m_received = {}; // burn
 	}
 
-	virtual bool put(const void* data, u32 size) override
+	virtual bool put(const void* data, std::size_t size) override
 	{
-		const u32 asize = size + 15 & ~15;
+		const auto asize = size + 15 & ~15;
 
 		std::unique_ptr<rc6_block_t[]> buf(new rc6_block_t[asize / 16]);
 
@@ -148,7 +158,7 @@ public:
 
 		std::memset(reinterpret_cast<u8*>(buf.get()) + size, 0, asize - size); // zero padding
 
-		for (u32 i = 0; i < asize / 16; i++)
+		for (std::size_t i = 0; i < asize / 16; i++)
 		{
 			m_cipher.encrypt_block_cbc(buf.get()[i]);
 		}
@@ -156,10 +166,10 @@ public:
 		return socket_t::put(buf.get(), asize);
 	}
 
-	virtual bool get(void* data, u32 size) override
+	virtual bool get(void* data, std::size_t size) override
 	{
 		// try to get saved data
-		if (const u32 read = std::min<u32>(m_received.length, size))
+		if (const auto read = std::min<std::size_t>(m_received.length, size))
 		{
 			std::memcpy(data, m_received.data, read);
 			m_received = short_str_t<15>::make(m_received.data + read, m_received.length - read); // shrink saved data
@@ -169,7 +179,7 @@ public:
 		}
 
 		// try to receive new data from socket
-		if (const u32 asize = size + 15 & ~15)
+		if (const auto asize = size + 15 & ~15)
 		{
 			std::unique_ptr<rc6_block_t[]> buf(new rc6_block_t[asize / 16]);
 
@@ -205,12 +215,12 @@ class web_socket_t : public socket_t
 protected:
 
 public:
-	virtual bool put(const void* data, u32 size) override
+	virtual bool put(const void* data, std::size_t size) override
 	{
 		return socket_t::put(data, size);
 	}
 
-	virtual bool get(void* data, u32 size) override
+	virtual bool get(void* data, std::size_t size) override
 	{
 		return socket_t::get(data, size);
 	}

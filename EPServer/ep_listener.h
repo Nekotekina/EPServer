@@ -27,7 +27,7 @@ public:
 
 	void push_text(const std::string& text)
 	{
-		push_packet(packet_t(new packet_data_t(ServerTextRec::generate(GetTime(), text))));
+		push_packet(ServerTextRec::generate(GetTime(), text));
 	}
 
 	void stop()

@@ -548,7 +548,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			case SCMD_REFRESH:
 			{
 				// Update player list (it shouldn't be necessary to use it)
-				listener->push_packet(packet_t(new packet_data_t(g_players.generate_player_list(player->index))));
+				listener->push_packet(g_players.generate_player_list(player->index));
 
 				std::this_thread::sleep_for(std::chrono::seconds(1));
 				break;
@@ -586,17 +586,14 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 	}
 }
 
-void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
+void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 {
 	auto message = [](socket_t& socket, const char* text)
 	{
-		const packet_data_t packet = ServerTextRec::generate(GetTime(), text, strlen(text));
+		const packet_t packet = ServerTextRec::generate(GetTime(), text, strlen(text));
 
-		socket.put(packet.get<void>(), packet.size());
+		socket.put(packet->get<void>(), packet->size());
 	};
-
-	// initialize socket_t without encryption
-	std::shared_ptr<socket_t> socket(new socket_t(aid));
 
 	ProtocolHeader header;
 
@@ -618,7 +615,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 			(auth_info.reset(header.size), !socket->get(auth_info.get(), header.size)))
 		{
 			ep_printf_ip("-- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
-			message(*socket, "Invalid auth packet");
+			message(*socket, "Handshake failed.");
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
 		}
@@ -664,7 +661,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 				std::memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size());
 
 				// re-initialize with encryption
-				socket.reset(new cipher_socket_t(socket->release(), std::move(key)));
+				socket = std::make_shared<cipher_socket_t>(socket->release(), std::move(key));
 			}
 		}
 
@@ -674,7 +671,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		if (auth->name.length > 16 || !IsLoginValid(auth->name.data, auth->name.length))
 		{
 			ep_printf_ip("-- (AUTH-3) (%d)\n", ip, port, auth->name.length);
-			message(*socket, "Invalid login");
+			message(*socket, "Invalid login.");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
 		}
@@ -691,7 +688,7 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 		if (!(account = g_accounts.add_account(auth->name, auth->pass)))
 		{
 			ep_printf_ip("%s", ip, port, "-- (AUTH-4)\n");
-			message(*socket, "Invalid password");
+			message(*socket, "Invalid password.");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
 		}
@@ -700,62 +697,36 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	if (account->flags & PF_NOCONNECT)
 	{
 		ep_printf_ip("%s", ip, port, "-- (AUTH-5)\n");
-		message(*socket, "Account is banned");
+		message(*socket, "Account is banned.");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
 
-	std::shared_ptr<player_t> player = g_players.add_player(account);
+	auto player = g_players.add_player(account);
 
 	if (!player)
 	{
 		ep_printf_ip("%s", ip, port, "-- (AUTH-6)\n");
-		message(*socket, "Too many players connected");
-		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
+		message(*socket, "Too many players connected.");
+		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
 
-	std::shared_ptr<listener_t> listener = g_listeners.add_listener(player);
+	auto listener = g_listeners.add_listener(player);
 
 	if (!listener)
 	{
 		ep_printf_ip("%s", ip, port, "-- (AUTH-7)\n");
-		message(*socket, "Too many connections");
-		socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
+		message(*socket, "Too many connections.");
+		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
 
-	std::unique_ptr<listener_t, void(*)(listener_t*)> listener_remover(listener.get(), [](listener_t* listener) // scope exit
-	{
-		if (g_listeners.remove_listener(listener) == 0 && ~listener->player->account->flags.fetch_or(PF_LOST) & PF_LOST)
-		{
-			// connection lost
+	// send version information
+	listener->push(version_info);
 
-			// check if the quit command has been sent
-			if (listener->quit_flag.test_and_set())
-			{
-				g_listeners.broadcast(listener->player->account->get_name() + "%/ has quit.", only_online_players);
-				g_players.remove_player(listener->player->index);
-				g_listeners.update_player(listener->player, true);
-			}
-			else
-			{
-				g_listeners.broadcast(listener->player->account->get_name() + "%/ lost connection with server.", only_online_players);
-				g_listeners.update_player(listener->player);
-			}
-		}
-	});
-
-	{
-		const packet_data_t plist = g_players.generate_player_list(player->index);
-
-		if (!socket->put(version_info) || !socket->put(plist.get<void>(), plist.size()))
-		{
-			ep_printf_ip("%s", ip, port, "-- (LOST)\n");
-			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
-			return;
-		}
-	}
+	// send player list
+	listener->push_packet(g_players.generate_player_list(player->index));
 
 	listener->push_text("EPServer git version: " GIT_VERSION); // TODO: print greeting and something else
 
@@ -779,19 +750,34 @@ void sender_thread(socket_id_t aid, inaddr_t ip, u16 port)
 	std::thread(receiver_thread, socket, account, player, listener).detach();
 
 	// start sending packets
-	while (auto packet = listener->pop(30000, g_keepalive_packet))
+	while (packet_t packet = listener->pop(30000, g_keepalive_packet))
 	{
 		if (!socket->put(packet->get<void>(), packet->size()))
 		{
-			ep_printf_ip("%s", ip, port, "-- (LOST)\n");
-			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
-			return;
+			break;
 		}
 	}
 
-	// connection closed
-	ep_printf_ip("%s", ip, port, "-- (CLOSED)\n");
+	// detect connection lost
+	if (g_listeners.remove_listener(listener.get()) == 0 && ~listener->player->account->flags.fetch_or(PF_LOST) & PF_LOST)
+	{
+		// check if the quit command has been sent
+		if (listener->quit_flag.test_and_set())
+		{
+			g_listeners.broadcast(listener->player->account->get_name() + "%/ has quit.", only_online_players);
+			g_players.remove_player(listener->player->index);
+			g_listeners.update_player(listener->player, true);
+		}
+		else
+		{
+			g_listeners.broadcast(listener->player->account->get_name() + "%/ lost connection with server.", only_online_players);
+			g_listeners.update_player(listener->player);
+		}
+	}
+
+	// close connection
 	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
+	ep_printf_ip("%s", ip, port, "--\n");
 }
 
 void stop(int x)
@@ -827,7 +813,7 @@ int main(int arg_count, const char* args[])
 
 	g_accounts.load(); // load account info
 
-	std::printf("accounts: %d\n", g_accounts.size());
+	std::printf("accounts: %zu\n", g_accounts.size());
 
 	if (unique_FILE f{ std::fopen("key.dat", "rb") })
 	{
@@ -913,7 +899,7 @@ int main(int arg_count, const char* args[])
 		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH };
 	}
 
-	g_keepalive_packet.reset(new packet_data_t(5));
+	g_keepalive_packet = std::make_shared<packet_data_t>(5);
 	*g_keepalive_packet->get<ClientSCmdRec>() = { { CLIENT_SCMD, 2 }, SCMD_NONE };
 
 #ifdef _WIN32
@@ -972,6 +958,6 @@ int main(int arg_count, const char* args[])
 		ep_printf_ip("%s", info.sin_addr, info.sin_port, "++\n");
 
 		// start client thread
-		std::thread(sender_thread, aid, info.sin_addr, info.sin_port).detach();
+		std::thread(sender_thread, std::make_shared<socket_t>(aid), info.sin_addr, info.sin_port).detach();
 	}
 }
