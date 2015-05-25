@@ -21,7 +21,7 @@ void listener_t::push_packet(packet_t packet)
 
 void listener_t::push(const void* data, u32 size)
 {
-	packet_t packet = std::make_shared<packet_data_t>(size);
+	packet_t packet = make_packet(size);
 
 	std::memcpy(packet->get(), data, size);
 
@@ -81,7 +81,7 @@ u32 listener_list_t::remove_listener(const listener_t* listener)
 
 void listener_list_t::update_player(const std::shared_ptr<player_t>& player, bool removed)
 {
-	packet_t packet = std::make_shared<packet_data_t>(sizeof(ServerUpdatePlayer));
+	packet_t packet = make_packet(sizeof(ServerUpdatePlayer));
 
 	const auto data = packet->get<ServerUpdatePlayer>();
 	data->header.code = SERVER_PUPDATE;

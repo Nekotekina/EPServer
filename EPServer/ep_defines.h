@@ -12,45 +12,148 @@ using md5_t = std::array<unsigned char, 16>;
 
 static_assert(sizeof(md5_t) == 16, "Invalid md5_t size");
 
-// Data packet data
-class packet_data_t
+class packet_t;
+
+// Data packet data (contains ref counter, data size and possibly data)
+class packet_storage_t final
 {
-	const std::unique_ptr<char[]> m_data;
-	const std::size_t m_size = 0;
+	friend class packet_t;
+
+	std::atomic<u32> m_refcnt;
+	//std::atomic<u32> m_weakcnt; // currently not used
 
 public:
-	packet_data_t()
+	const std::size_t size = 0;
+
+	packet_storage_t()
+		: m_refcnt(1)
 	{
 	}
 
-	explicit packet_data_t(std::size_t size)
-		: m_data(new char[size])
-		, m_size(size)
+	// access data
+	template<typename T = char> T* get()
 	{
+		static_assert(std::is_pod<T>::value, "Invalid get<> type (must be POD)");
+
+		return reinterpret_cast<T*>(this + 1);
 	}
 
-	packet_data_t(packet_data_t&& right) = delete;
-
-	packet_data_t& operator =(packet_data_t&& right) = delete;
-
-	~packet_data_t()
+	~packet_storage_t()
 	{
-		std::memset(m_data.get(), 0, m_size); // burn
-	}
-
-	template<typename T = char> T* get() const
-	{
-		return reinterpret_cast<T*>(m_data.get());
-	}
-
-	std::size_t size() const
-	{
-		return m_size;
+		std::memset(get(), 0, size); // burn
 	}
 };
 
-// Data packet
-using packet_t = std::shared_ptr<packet_data_t>;
+static_assert(sizeof(packet_storage_t) == 2 * sizeof(std::size_t), "Invalid packet_storage_t size");
+
+// Data packet (shared dynamic byte array for POD, works much like limited std::shared_ptr)
+class packet_t final
+{
+	packet_storage_t* m_ptr = nullptr;
+
+	void dec_ref()
+	{
+		if (m_ptr && !--m_ptr->m_refcnt)
+		{
+			m_ptr->~packet_storage_t();
+			std::free(m_ptr);
+		}
+	}
+
+	void inc_ref()
+	{
+		if (m_ptr)
+		{
+			m_ptr->m_refcnt++;
+		}
+	}
+
+public:
+	packet_t()
+	{
+	}
+
+	packet_t(nullptr_t)
+	{
+	}
+
+	packet_t(const packet_t& right)
+		: m_ptr(right.m_ptr)
+	{
+		inc_ref();
+	}
+
+	packet_t& operator =(const packet_t& right)
+	{
+		packet_t old;
+		old.m_ptr = m_ptr;
+
+		m_ptr = right.m_ptr;
+		inc_ref();
+
+		return *this;
+	}
+
+	packet_t(packet_t&& right)
+		: m_ptr(right.m_ptr)
+	{
+		right.m_ptr = nullptr;
+	}
+
+	packet_t& operator =(packet_t&& right)
+	{
+		if (this != &right)
+		{
+			dec_ref();
+
+			m_ptr = right.m_ptr;
+			right.m_ptr = nullptr;
+		}
+
+		return *this;
+	}
+
+	~packet_t()
+	{
+		dec_ref();
+	}
+
+	void reset()
+	{
+		dec_ref();
+		m_ptr = nullptr;
+	}
+
+	packet_storage_t* operator *() const
+	{
+		return m_ptr;
+	}
+
+	packet_storage_t* operator ->() const
+	{
+		return m_ptr;
+	}
+
+	operator bool() const
+	{
+		return m_ptr != nullptr;
+	}
+};
+
+// Data packet generator
+inline packet_t make_packet(std::size_t size)
+{
+	// allocate memory for ref counter, size and data
+	void* pointer = std::malloc(sizeof(packet_storage_t) + size);
+
+	// initialize ref counter
+	auto storage = new (pointer)packet_storage_t();
+
+	// rewrite size
+	const_cast<std::size_t&>(storage->size) = size;
+
+	return reinterpret_cast<packet_t&&>(pointer);
+}
 
 // Server identifier (UTF8 string)
 static const auto ep_version = "EPClient v0.16";
@@ -177,7 +280,7 @@ struct ServerTextRec
 	{
 		const u16 tsize = static_cast<u16>(std::min<std::size_t>(size, max_size)) + 8; // data size
 
-		packet_t packet = std::make_shared<packet_data_t>(tsize + 3);
+		packet_t packet = make_packet(tsize + 3);
 
 		const auto rec = packet->get<ServerTextRec>();
 		rec->header = { SERVER_TEXT, tsize };

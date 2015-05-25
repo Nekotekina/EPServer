@@ -74,7 +74,7 @@ packet_t player_list_t::generate_player_list(u32 self)
 
 	const u16 hsize = static_cast<u16>(8 + sizeof(PlayerElement) * m_list.size());
 
-	packet_t packet = std::make_shared<packet_data_t>(hsize + 3);
+	packet_t packet = make_packet(hsize + 3);
 
 	const auto data = packet->get<ServerListRec>();
 	data->header = { SERVER_PLIST, hsize };
