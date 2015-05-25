@@ -23,8 +23,7 @@ socket_t g_server;
 void stop(int x);
 
 packet_t g_keepalive_packet;
-
-packet_data_t g_auth_packet; // open key + sign
+packet_t g_auth_packet; // open key + sign
 mpz_class g_key_n; // open key
 mpz_class g_key_d; // priv key
 u32 g_key_size = 0; // key size (bytes)
@@ -598,7 +597,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 	ProtocolHeader header;
 
 	// send auth packet and receive header
-	if (!socket->put(g_auth_packet.get<void>(), g_auth_packet.size()) || !socket->get(header))
+	if (!socket->put(g_auth_packet->get<void>(), g_auth_packet->size()) || !socket->get(header))
 	{
 		ep_printf_ip("%s", ip, port, "-- (AUTH-1)\n");
 		return;
@@ -607,12 +606,12 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 	std::shared_ptr<account_t> account;
 
 	{
-		packet_data_t auth_info;
+		packet_t auth_info;
 
 		// validate auth packet content
 		if ((header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
 			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
-			(auth_info.reset(header.size), !socket->get(auth_info.get(), header.size)))
+			(auth_info = std::make_shared<packet_data_t>(header.size), !socket->get(auth_info.get(), header.size)))
 		{
 			ep_printf_ip("-- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
 			message(*socket, "Handshake failed.");
@@ -628,44 +627,44 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 			for (u32 i = 0; i < g_key_size; i++) // convert from base 256
 			{
 				num <<= 8;
-				num += auth_info.get<u8>()[i];
+				num += auth_info->get<u8>()[i];
 			}
 
 			mpz_powm(num.get_mpz_t(), num.get_mpz_t(), g_key_d.get_mpz_t(), g_key_n.get_mpz_t()); // decrypt
 
 			for (u32 i = g_key_size - 1; ~i; i--) // get decrypted data
 			{
-				auth_info.get<u8>()[i] = static_cast<u8>(num.get_ui());
+				auth_info->get<u8>()[i] = static_cast<u8>(num.get_ui());
 				num >>= 8;
 
 				if (num == 0)
 				{
 					// fix data displacement (allocate new block)
-					packet_data_t new_info(g_key_size - i);
-					std::memcpy(new_info.get(), auth_info.get() + i, new_info.size());
+					packet_t new_info = std::make_shared<packet_data_t>(g_key_size - i);
+					std::memcpy(new_info.get(), auth_info.get() + i, new_info->size());
 					auth_info = std::move(new_info);
 					break;
 				}
 			}
 
-			if (auth_info.size() < sizeof(SecureAuthRec))
+			if (auth_info->size() < sizeof(SecureAuthRec))
 			{
 				// clear invalid data (proceed with empty login)
-				std::memset(auth_info.get(), 0, auth_info.size());
+				std::memset(auth_info.get(), 0, auth_info->size());
 			}
 			else
 			{
-				packet_data_t key(32);
+				packet_t key = std::make_shared<packet_data_t>(32);
 
 				// copy session key
-				std::memcpy(key.get(), auth_info.get<SecureAuthRec>()->ckey, key.size());
+				std::memcpy(key.get(), auth_info->get<SecureAuthRec>()->ckey, key->size());
 
 				// re-initialize with encryption
 				socket = std::make_shared<cipher_socket_t>(socket->release(), std::move(key));
 			}
 		}
 
-		const auto auth = auth_info.get<ClientAuthRec>();
+		const auto auth = auth_info->get<ClientAuthRec>();
 
 		// check login
 		if (auth->name.length > 16 || !IsLoginValid(auth->name.data, auth->name.length))
@@ -822,12 +821,12 @@ int main(int arg_count, const char* args[])
 		const u32 size = std::ftell(f.get());
 
 		// get file content
-		packet_data_t keys(size + 1);
+		packet_t keys = std::make_shared<packet_data_t>(size + 1);
 		std::fseek(f.get(), 0, SEEK_SET);
-		std::fread(keys.get<void>(), 1, size, f.get());
+		std::fread(keys->get<void>(), 1, size, f.get());
 
 		// data pointer
-		const auto ptr = keys.get();
+		const auto ptr = keys->get();
 		
 		// string pointers
 		std::vector<char*> strings = { ptr };
@@ -873,14 +872,14 @@ int main(int arg_count, const char* args[])
 			g_key_size = static_cast<u32>(mpz_size(g_key_d.get_mpz_t()) * sizeof(mp_limb_t));
 
 			// prepare auth packet
-			g_auth_packet.reset(3 + g_key_size * 2);
-			*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(g_key_size * 2) };
+			g_auth_packet = std::make_shared<packet_data_t>(3 + g_key_size * 2);
+			*g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(g_key_size * 2) };
 
 			// convert to base 256
 			for (u32 i = g_key_size - 1; ~i; i--)
 			{
-				g_auth_packet.get<u8>()[i + 3] = static_cast<u8>(key_n.get_ui());
-				g_auth_packet.get<u8>()[i + g_key_size + 3] = static_cast<u8>(key_s.get_ui());
+				g_auth_packet->get<u8>()[i + 3] = static_cast<u8>(key_n.get_ui());
+				g_auth_packet->get<u8>()[i + g_key_size + 3] = static_cast<u8>(key_s.get_ui());
 				key_n >>= 8;
 				key_s >>= 8;
 			}
@@ -893,10 +892,10 @@ int main(int arg_count, const char* args[])
 
 	std::printf("key size: %d\n", g_key_size * 8);
 
-	if (g_auth_packet.size() == 0)
+	if (g_auth_packet->size() == 0)
 	{
-		g_auth_packet.reset(3);
-		*g_auth_packet.get<ProtocolHeader>() = { SERVER_AUTH };
+		g_auth_packet = std::make_shared<packet_data_t>(3);
+		*g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH };
 	}
 
 	g_keepalive_packet = std::make_shared<packet_data_t>(5);

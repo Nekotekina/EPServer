@@ -39,7 +39,7 @@ class rc6_cipher_t final
 	rc6_block_t m_dec_last;
 
 public:
-	explicit rc6_cipher_t(packet_data_t key);
+	explicit rc6_cipher_t(packet_t key);
 	~rc6_cipher_t();
 
 	void encrypt_block_cbc(rc6_block_t& block);

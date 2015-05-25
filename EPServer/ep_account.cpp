@@ -53,7 +53,7 @@ bool account_list_t::save()
 
 	if (!f)
 	{
-		std::printf("account.dat writing failed!");
+		std::printf("account.dat writing failed!\n");
 		return false;
 	}
 

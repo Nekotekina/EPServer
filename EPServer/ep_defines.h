@@ -15,8 +15,8 @@ static_assert(sizeof(md5_t) == 16, "Invalid md5_t size");
 // Data packet data
 class packet_data_t
 {
-	std::unique_ptr<char[]> m_data;
-	std::size_t m_size = 0;
+	const std::unique_ptr<char[]> m_data;
+	const std::size_t m_size = 0;
 
 public:
 	packet_data_t()
@@ -29,38 +29,16 @@ public:
 	{
 	}
 
-	packet_data_t(packet_data_t&& right)
-		: m_data(std::move(right.m_data))
-		, m_size(right.m_size)
-	{
-		right.m_size = 0;
-	}
+	packet_data_t(packet_data_t&& right) = delete;
 
-	packet_data_t& operator =(packet_data_t&& right)
-	{
-		if (this != &right)
-		{
-			m_data = std::move(right.m_data);
-			m_size = right.m_size;
-			right.m_size = 0;
-		}
-		
-		return *this;
-	}
+	packet_data_t& operator =(packet_data_t&& right) = delete;
 
 	~packet_data_t()
 	{
 		std::memset(m_data.get(), 0, m_size); // burn
 	}
 
-	void reset(u32 size)
-	{
-		m_data.reset(size ? new char[size] : nullptr);
-		m_size = size;
-	}
-
-	template<typename T = char>
-	T* get() const
+	template<typename T = char> T* get() const
 	{
 		return reinterpret_cast<T*>(m_data.get());
 	}

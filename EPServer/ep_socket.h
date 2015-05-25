@@ -136,7 +136,7 @@ protected:
 	short_str_t<15> m_received;
 
 public:
-	cipher_socket_t(socket_id_t socket, packet_data_t key)
+	cipher_socket_t(socket_id_t socket, packet_t key)
 		: socket_t(socket)
 		, m_cipher(std::move(key))
 		, m_received({})
