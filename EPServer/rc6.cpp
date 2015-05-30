@@ -33,7 +33,7 @@ rc6_cipher_t::rc6_cipher_t(packet_t key)
 
 	for (u32 i = 0; i < minlen; i++)
 	{
-		L[i] = *reinterpret_cast<u32*>(key->get() + (i * 4 % key->size));
+		L[i] = key->get<u32>(i * 4 % key->size);
 	}
 
 	m_s[0] = p32;
