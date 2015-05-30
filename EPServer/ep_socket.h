@@ -27,12 +27,19 @@ using inaddr_t = decltype(sockaddr_in::sin_addr);
 
 #endif
 
+void print_time_ip(inaddr_t ip, u16 port);
+
 // Print logs with current time and specified IP:port
 template<typename... T> inline void ep_printf_ip(const char* fmt, inaddr_t ip, u16 port, T&&... args)
 {
-	print_time();
-	std::printf("%16s:%-6d", inet_ntoa(ip), port);
+	print_time_ip(ip, port);
 	std::printf(fmt, std::forward<T>(args)...);
+}
+
+inline void ep_printf_ip(const char* fmt, inaddr_t ip, u16 port)
+{
+	print_time_ip(ip, port);
+	std::printf("%s", fmt);
 }
 
 class socket_t

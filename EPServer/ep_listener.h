@@ -10,11 +10,14 @@ class listener_t final
 	std::condition_variable m_cond;
 
 public:
-	const std::shared_ptr<player_t> player;
+	const u32 addr;
+	const u16 port;
+	const bool enc; // true if cipher_socket_t used
 
 	std::atomic_flag quit_flag;
+	std::atomic_flag stop_flag;
 
-	explicit listener_t(const std::shared_ptr<player_t>& player);
+	listener_t(u32 addr, u16 port, bool enc);
 
 	void push_packet(packet_t packet);
 
@@ -32,25 +35,9 @@ public:
 
 	void stop()
 	{
-		push_packet(nullptr); // use empty message as stop message
+		stop_flag.test_and_set();
+		push_packet(packet_t{}); // use empty message as stop message
 	}
 
 	packet_t pop(u32 timeout_ms, const packet_t& default_packet);
-};
-
-class listener_list_t final
-{
-	std::mutex m_mutex;
-	std::vector<std::shared_ptr<listener_t>> m_list;
-
-public:
-	std::shared_ptr<listener_t> add_listener(const std::shared_ptr<player_t>& player);
-
-	u32 remove_listener(const listener_t* listener);
-
-	void update_player(const std::shared_ptr<player_t>& player, bool removed = false);
-
-	void broadcast(const std::string& text, const std::function<bool(listener_t&)> pred);
-
-	void stop_all();
 };

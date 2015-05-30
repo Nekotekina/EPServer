@@ -17,7 +17,6 @@ const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersion
 
 account_list_t g_accounts;
 player_list_t g_players;
-listener_list_t g_listeners;
 socket_t g_server;
 
 void stop(int x);
@@ -28,14 +27,9 @@ mpz_class g_key_n; // open key
 mpz_class g_key_d; // priv key
 u32 g_key_size = 0; // key size (bytes)
 
-bool only_online_players(listener_t& listener)
+bool only_online(player_t& player)
 {
-	return (listener.player->account->flags & PF_OFF) == 0;
-}
-
-bool all_players(listener_t& listener)
-{
-	return true;
+	return (player.account->flags & PF_OFF) == 0;
 }
 
 void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t> account, std::shared_ptr<player_t> player, std::shared_ptr<listener_t> listener)
@@ -93,11 +87,11 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						if (account->flags.fetch_and(~PF_OFF) & PF_OFF)
 						{
-							g_listeners.broadcast(account->get_name() + "%/ is online.", only_online_players);
-							g_listeners.update_player(player);
+							g_players.broadcast(account->get_name() + "%/ is online.", only_online);
+							g_players.update_player(player);
 						}
 
-						g_listeners.broadcast(account->get_name() + "%/ %bwrites:%x " + message + "%x", only_online_players);
+						g_players.broadcast(account->get_name() + "%/ %bwrites:%x " + message + "%x", only_online);
 					}
 
 					// ~207 ms + 1 ms per character
@@ -111,9 +105,13 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 						listener->push_text("You cannot write private messages.");
 						listener->push_text(message);
 					}
+					else if (const auto target = g_players.get_player(cmd.v0))
+					{
+						target->broadcast(account->get_name() + "%/%p%g writes (private):%x " + message + "%x");
+					}
 					else
 					{
-						g_listeners.broadcast(account->get_name() + "%/%p%g writes (private):%x " + message + "%x", [&](listener_t& l){ return l.player->index == cmd.v0; });
+						listener->push_text("Invalid player.");
 					}
 
 					// ~201 ms + 0.25 ms per character
@@ -138,11 +136,11 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						if (account->flags.fetch_and(~PF_OFF) & PF_OFF)
 						{
-							g_listeners.broadcast(account->get_name() + "%/ is online.", only_online_players);
-							g_listeners.update_player(player);
+							g_players.broadcast(account->get_name() + "%/ is online.", only_online);
+							g_players.update_player(player);
 						}
 
-						g_listeners.broadcast(account->get_name() + "%/ throws " + FormatDice(cmd.v1), only_online_players);
+						g_players.broadcast(account->get_name() + "%/ throws " + FormatDice(cmd.v1), only_online);
 					}
 
 					// 200 ms
@@ -164,7 +162,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						const std::string dice = FormatDice(cmd.v1);
 
-						g_listeners.broadcast(account->get_name() + "%/%p throws " + dice + " to you (private)", [&](listener_t& l){ return l.player->index == cmd.v0; });
+						target->broadcast(account->get_name() + "%/%p throws " + dice + " to you (private)");
 
 						listener->push_text("You throw " + dice + "%/ to " + target->account->get_name());
 					}
@@ -188,7 +186,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 				{
 					std::string message(cmd.data, text_size);
 
-					g_listeners.broadcast(account->get_name() + "%/ %bwrites:%x " + message + "%x", all_players);
+					g_players.broadcast(account->get_name() + "%/ %bwrites:%x " + message + "%x");
 				}
 				else
 				{
@@ -364,7 +362,29 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					// find cmd.v0 player and display information
 					if (const auto target = g_players.get_player(cmd.v0))
 					{
-						listener->push_text("Not implemented.");
+						std::string info;
+
+						info += "\nLogin: ";
+						info += target->account->name;
+						info += "\nName: ";
+						info += target->account->uniq_name;
+						info += "\nEmail: ";
+						info += target->account->email;
+						info += "\nFlags:";
+
+						for (u32 i = 0; i < 64; i++)
+						{
+							if (target->account->flags & (1ull << i))
+							{
+								info += " [";
+								info += FlagName[i];
+								info += "]";
+							}
+						}
+						
+						target->append_connection_info(info);
+
+						listener->push_text(info);
 					}
 					else
 					{
@@ -525,9 +545,13 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			{
 				if (~account->flags.fetch_or(PF_OFF) & PF_OFF)
 				{
-					const s32 index = player->index;
-					g_listeners.broadcast(account->get_name() + "%/ is offline.", [=](listener_t& l){ return (l.player->account->flags & PF_OFF) == 0 || l.player->index == index; });
-					g_listeners.update_player(player);
+					const auto packet = ServerTextRec::generate(GetTime(), account->get_name() + "%/ is offline.");
+					
+					// send additional dedicated message because it's hidden by PF_OFF flag
+					player->broadcast(packet);
+
+					g_players.broadcast(packet, only_online);
+					g_players.update_player(player);
 				}
 
 				std::this_thread::sleep_for(std::chrono::milliseconds(300));
@@ -537,8 +561,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			{
 				if (account->flags.fetch_and(~PF_OFF) & PF_OFF)
 				{
-					g_listeners.broadcast(account->get_name() + "%/ is online.", only_online_players);
-					g_listeners.update_player(player);
+					g_players.broadcast(account->get_name() + "%/ is online.", only_online);
+					g_players.update_player(player);
 				}
 
 				std::this_thread::sleep_for(std::chrono::milliseconds(300));
@@ -591,15 +615,15 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 	{
 		const packet_t packet = ServerTextRec::generate(GetTime(), text, strlen(text));
 
-		socket.put(packet->get(), packet->size);
+		socket.put(packet->data(), packet->size);
 	};
 
 	ProtocolHeader header;
 
 	// send auth packet and receive header
-	if (!socket->put(g_auth_packet->get(), g_auth_packet->size) || !socket->get(header))
+	if (!socket->put(g_auth_packet->data(), g_auth_packet->size) || !socket->get(header))
 	{
-		ep_printf_ip("%s", ip, port, "- (AUTH-1)\n");
+		ep_printf_ip("- (AUTH-1)\n", ip, port);
 		return;
 	}
 
@@ -611,7 +635,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		// validate auth packet content
 		if ((header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
 			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
-			(auth_info = make_packet(header.size), !socket->get(auth_info->get(), header.size)))
+			(auth_info = make_packet(header.size), !socket->get(auth_info->data(), header.size)))
 		{
 			ep_printf_ip("- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
 			message(*socket, "Handshake failed.");
@@ -627,21 +651,21 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 			for (u32 i = 0; i < g_key_size; i++) // convert from base 256
 			{
 				num <<= 8;
-				num += auth_info->get<u8>()[i];
+				num += auth_info->get<u8>(i);
 			}
 
 			mpz_powm(num.get_mpz_t(), num.get_mpz_t(), g_key_d.get_mpz_t(), g_key_n.get_mpz_t()); // decrypt
 
 			for (u32 i = g_key_size - 1; ~i; i--) // get decrypted data
 			{
-				auth_info->get<u8>()[i] = static_cast<u8>(num.get_ui());
+				auth_info->get<u8>(i) = static_cast<u8>(num.get_ui());
 				num >>= 8;
 
 				if (num == 0)
 				{
 					// fix data displacement (allocate new block)
 					packet_t new_info = make_packet(g_key_size - i);
-					std::memcpy(new_info->get(), auth_info->get() + i, new_info->size);
+					std::memcpy(new_info->data(), &auth_info->get(i), new_info->size);
 					auth_info = std::move(new_info);
 					break;
 				}
@@ -650,26 +674,26 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 			if (auth_info->size < sizeof(SecureAuthRec))
 			{
 				// clear invalid data (proceed with empty login)
-				std::memset(auth_info->get(), 0, auth_info->size);
+				std::memset(auth_info->data(), 0, auth_info->size);
 			}
 			else
 			{
 				packet_t key = make_packet(32);
 
 				// copy session key
-				std::memcpy(key->get(), auth_info->get<SecureAuthRec>()->ckey, key->size);
+				std::memcpy(key->data(), auth_info->get<SecureAuthRec>().ckey, key->size);
 
 				// re-initialize with encryption
 				socket = std::make_shared<cipher_socket_t>(socket->release(), std::move(key));
 			}
 		}
 
-		const auto auth = auth_info->get<ClientAuthRec>();
+		auto& auth = auth_info->get<ClientAuthRec>();
 
 		// check login
-		if (auth->name.length > 16 || !IsLoginValid(auth->name.data, auth->name.length))
+		if (auth.name.length > 16 || !IsLoginValid(auth.name.data, auth.name.length))
 		{
-			ep_printf_ip("- (AUTH-3) (%d)\n", ip, port, auth->name.length);
+			ep_printf_ip("- (AUTH-3) (%d)\n", ip, port, auth.name.length);
 			message(*socket, "Invalid login.");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -678,15 +702,15 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		// prepare password
 		HL_MD5_CTX ctx;
 		MD5().MD5Init(&ctx);
-		MD5().MD5Update(&ctx, auth->pass.data(), 16); // calculate md5 from md5(password) arrived
-		MD5().MD5Final(auth->pass.data(), &ctx);
+		MD5().MD5Update(&ctx, auth.pass.data(), 16); // calculate md5 from md5(password) arrived
+		MD5().MD5Final(auth.pass.data(), &ctx);
 
-		ep_printf_ip("* LOGIN: %s\n", ip, port, auth->name.c_str().get());
+		ep_printf_ip("* LOGIN: %s\n", ip, port, auth.name.c_str().get());
 
 		// find or create account
-		if (!(account = g_accounts.add_account(auth->name, auth->pass)))
+		if (!(account = g_accounts.add_account(auth.name, auth.pass)))
 		{
-			ep_printf_ip("%s", ip, port, "- (AUTH-4)\n");
+			ep_printf_ip("- (AUTH-4)\n", ip, port);
 			message(*socket, "Invalid password.");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -695,7 +719,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 
 	if (account->flags & PF_NOCONNECT)
 	{
-		ep_printf_ip("%s", ip, port, "- (AUTH-5)\n");
+		ep_printf_ip("- (AUTH-5)\n", ip, port);
 		message(*socket, "Account is banned.");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
@@ -705,17 +729,17 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 
 	if (!player)
 	{
-		ep_printf_ip("%s", ip, port, "- (AUTH-6)\n");
+		ep_printf_ip("- (AUTH-6)\n", ip, port);
 		message(*socket, "Too many players connected.");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
 	}
 
-	auto listener = g_listeners.add_listener(player);
+	auto listener = std::make_shared<listener_t>(ip.s_addr, port, header.code == CLIENT_SECURE_AUTH);
 
-	if (!listener)
+	if (!player->add_listener(listener))
 	{
-		ep_printf_ip("%s", ip, port, "- (AUTH-7)\n");
+		ep_printf_ip("- (AUTH-7)\n", ip, port);
 		message(*socket, "Too many connections.");
 		socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 		return;
@@ -731,18 +755,18 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 
 	if (account->flags.fetch_and(~PF_NEW_PLAYER) & PF_NEW_PLAYER) // new player connected
 	{
-		g_listeners.update_player(player);
-		g_listeners.broadcast(account->get_name() + "%/ connected as a new player.", only_online_players);
+		g_players.update_player(player);
+		g_players.broadcast(account->get_name() + "%/ connected as a new player.", only_online);
 		g_accounts.save();
 	}
 	else if (account->flags.fetch_and(~PF_LOST) & PF_LOST) // connection restored
 	{
-		g_listeners.update_player(player);
-		g_listeners.broadcast(account->get_name() + "%/ connected.", only_online_players);
+		g_players.update_player(player);
+		g_players.broadcast(account->get_name() + "%/ connected.", only_online);
 	}
 	else
 	{
-		g_listeners.update_player(player); // silent reconnection
+		g_players.update_player(player); // silent reconnection
 	}
 
 	// start receiver subthread (it shouldn't send data directly)
@@ -751,38 +775,38 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 	// start sending packets
 	while (packet_t packet = listener->pop(30000, g_keepalive_packet))
 	{
-		if (!socket->put(packet->get(), packet->size))
+		if (!socket->put(packet->data(), packet->size))
 		{
 			break;
 		}
 	}
 
 	// detect connection lost
-	if (g_listeners.remove_listener(listener.get()) == 0 && ~listener->player->account->flags.fetch_or(PF_LOST) & PF_LOST)
+	if (player->remove_listener(listener.get()) == PS_CONNECTION_LOST)
 	{
 		// check if the quit command has been sent
 		if (listener->quit_flag.test_and_set())
 		{
-			g_listeners.broadcast(listener->player->account->get_name() + "%/ has quit.", only_online_players);
-			g_players.remove_player(listener->player->index);
-			g_listeners.update_player(listener->player, true);
+			g_players.broadcast(account->get_name() + "%/ has quit.", only_online);
+			g_players.remove_player(player->index);
+			g_players.update_player(player, true);
 		}
 		else
 		{
-			g_listeners.broadcast(listener->player->account->get_name() + "%/ lost connection with server.", only_online_players);
-			g_listeners.update_player(listener->player);
+			g_players.broadcast(account->get_name() + "%/ lost connection with server.", only_online);
+			g_players.update_player(player);
 		}
 	}
 
 	// close connection
-	socket->put(ProtocolHeader{ SERVER_DISCONNECT });
-	ep_printf_ip("%s", ip, port, "-\n");
+	socket->put(ProtocolHeader{ listener->stop_flag.test_and_set() ? SERVER_DISCONNECT : SERVER_NONFATALDISCONNECT });
+	ep_printf_ip("-\n", ip, port);
 }
 
 void stop(int x)
 {
-	g_listeners.broadcast("Server stopped for reboot.", [](listener_t&){ return true; });
-	g_listeners.stop_all();
+	g_players.broadcast("Server stopped for reboot.");
+	g_players.broadcast(packet_t{});
 
 	std::this_thread::sleep_for(std::chrono::seconds(1));
 	
@@ -823,10 +847,10 @@ int main(int arg_count, const char* args[])
 		// get file content
 		packet_t keys = make_packet(size + 1);
 		std::fseek(f.get(), 0, SEEK_SET);
-		std::fread(keys->get(), 1, size, f.get());
+		std::fread(keys->data(), 1, size, f.get());
 
 		// data pointer
-		const auto ptr = keys->get();
+		const auto ptr = &keys->get();
 		
 		// string pointers
 		std::vector<char*> strings = { ptr };
@@ -873,13 +897,13 @@ int main(int arg_count, const char* args[])
 
 			// prepare auth packet
 			g_auth_packet = make_packet(3 + g_key_size * 2);
-			*g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(g_key_size * 2) };
+			g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(g_key_size * 2) };
 
 			// convert to base 256
 			for (u32 i = g_key_size - 1; ~i; i--)
 			{
-				g_auth_packet->get<u8>()[i + 3] = static_cast<u8>(key_n.get_ui());
-				g_auth_packet->get<u8>()[i + g_key_size + 3] = static_cast<u8>(key_s.get_ui());
+				g_auth_packet->get<u8>(i + 3) = static_cast<u8>(key_n.get_ui());
+				g_auth_packet->get<u8>(i + g_key_size + 3) = static_cast<u8>(key_s.get_ui());
 				key_n >>= 8;
 				key_s >>= 8;
 			}
@@ -895,11 +919,11 @@ int main(int arg_count, const char* args[])
 	if (g_auth_packet->size == 0)
 	{
 		g_auth_packet = make_packet(3);
-		*g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH };
+		g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH };
 	}
 
 	g_keepalive_packet = make_packet(5);
-	*g_keepalive_packet->get<ClientSCmdRec>() = { { CLIENT_SCMD, 2 }, SCMD_NONE };
+	g_keepalive_packet->get<ClientSCmdRec>() = { { CLIENT_SCMD, 2 }, SCMD_NONE };
 
 #ifdef _WIN32
 	WSADATA wsa_info = {};

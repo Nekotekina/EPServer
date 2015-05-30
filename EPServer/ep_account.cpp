@@ -116,7 +116,7 @@ std::shared_ptr<account_t> account_list_t::add_account(short_str_t<16> name, md5
 
 	ep_printf("New account registered: %s\n", name.c_str().get());
 
-	auto acc = std::make_shared<account_t>();
+	const auto acc = std::make_shared<account_t>();
 
 	acc->name = name;
 	acc->pass = pass;
@@ -124,6 +124,5 @@ std::shared_ptr<account_t> account_list_t::add_account(short_str_t<16> name, md5
 	acc->uniq_name = {};
 	acc->email = {};
 
-	m_list.emplace_back(acc);
-	return acc;
+	return m_list.emplace_back(acc), acc;
 }

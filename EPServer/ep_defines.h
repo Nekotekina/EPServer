@@ -7,6 +7,12 @@ template<typename... T> inline void ep_printf(const char* fmt, T&&... args)
 	std::printf(fmt, std::forward<T>(args)...);
 }
 
+inline void ep_printf(const char* fmt)
+{
+	print_time();
+	std::printf("%s", fmt);
+}
+
 // MD5 hash container
 using md5_t = std::array<unsigned char, 16>;
 
@@ -30,17 +36,21 @@ public:
 	{
 	}
 
-	// access data
-	template<typename T = char> T* get()
+	void* data()
+	{
+		return this + 1;
+	}
+
+	template<typename T = char> T& get(std::size_t offset = 0)
 	{
 		static_assert(std::is_pod<T>::value, "Invalid get<> type (must be POD)");
 
-		return reinterpret_cast<T*>(this + 1);
+		return *reinterpret_cast<T*>(reinterpret_cast<char*>(this + 1) + offset);
 	}
 
 	~packet_storage_t()
 	{
-		std::memset(get(), 0, size); // burn
+		std::memset(this + 1, 0, size); // burn
 	}
 };
 
@@ -282,10 +292,10 @@ struct ServerTextRec
 
 		packet_t packet = make_packet(tsize + 3);
 
-		const auto rec = packet->get<ServerTextRec>();
-		rec->header = { SERVER_TEXT, tsize };
-		rec->stamp = stamp;
-		std::memcpy(rec->data, text, tsize - 8);
+		auto& rec = packet->get<ServerTextRec>();
+		rec.header = { SERVER_TEXT, tsize };
+		rec.stamp = stamp;
+		std::memcpy(rec.data, text, tsize - 8);
 
 		return packet;
 	}
