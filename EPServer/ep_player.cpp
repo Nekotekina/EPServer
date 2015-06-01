@@ -60,15 +60,14 @@ bool player_t::add_listener(std::shared_ptr<listener_t> listener)
 	return m_list.emplace_back(std::move(listener)), true;
 }
 
-player_state_t player_t::remove_listener(const listener_t* listener)
+player_state_t player_t::remove_listener(const std::shared_ptr<listener_t>& listener)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
 	for (auto i = m_list.begin(); i != m_list.end(); i++)
 	{
-		if (i->get() == listener)
+		if (*i == listener)
 		{
-			// remove listener and return new conn_count value
 			m_list.erase(i);
 			break;
 		}
@@ -208,7 +207,7 @@ void player_list_t::broadcast(packet_t packet, const std::function<bool(player_t
 
 	for (auto& player : m_list)
 	{
-		if (!pred || pred(*player))
+		if (player && (!pred || pred(*player)))
 		{
 			player->broadcast(packet);
 		}

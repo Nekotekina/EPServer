@@ -28,7 +28,7 @@ public:
 
 	bool add_listener(std::shared_ptr<listener_t> listener);
 
-	player_state_t remove_listener(const listener_t* listener);
+	player_state_t remove_listener(const std::shared_ptr<listener_t>& listener);
 
 	void broadcast(packet_t packet);
 

@@ -782,14 +782,14 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 	}
 
 	// detect connection lost
-	if (player->remove_listener(listener.get()) == PS_CONNECTION_LOST)
+	if (player->remove_listener(listener) == PS_CONNECTION_LOST)
 	{
 		// check if the quit command has been sent
 		if (listener->quit_flag.test_and_set())
 		{
 			g_players.broadcast(account->get_name() + "%/ has quit.", only_online);
-			g_players.remove_player(player->index);
 			g_players.update_player(player, true);
+			g_players.remove_player(player->index);
 		}
 		else
 		{
