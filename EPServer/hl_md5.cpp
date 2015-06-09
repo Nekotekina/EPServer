@@ -69,6 +69,10 @@
 //----------------------------------------------------------------------
 // defines
 
+#ifdef __GNUG__
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#endif
+
 // Constants for MD5Transform routine.
 #define S11 7
 #define S12 12

@@ -18,40 +18,58 @@ using md5_t = std::array<unsigned char, 16>;
 
 static_assert(sizeof(md5_t) == 16, "Invalid md5_t size");
 
-class packet_t;
-
 // Data packet data (contains ref counter, data size and possibly data)
 class packet_storage_t final
 {
 	friend class packet_t;
 
-	std::atomic<u32> m_refcnt;
-	//std::atomic<u32> m_weakcnt; // currently not used
+	std::atomic<u32> m_refcnt{ 1 };
 
-public:
-	const std::size_t size = 0;
-
-	packet_storage_t()
-		: m_refcnt(1)
+	packet_storage_t(std::size_t size)
+		: size(size)
 	{
-	}
-
-	void* data()
-	{
-		return this + 1;
-	}
-
-	template<typename T = char> T& get(std::size_t offset = 0)
-	{
-		static_assert(std::is_pod<T>::value, "Invalid get<> type (must be POD)");
-
-		return *reinterpret_cast<T*>(reinterpret_cast<char*>(this + 1) + offset);
 	}
 
 	~packet_storage_t()
 	{
 		std::memset(this + 1, 0, size); // burn
 	}
+
+public:
+	const std::size_t size;
+
+	inline void* data()
+	{
+		return this + 1;
+	}
+
+	template<typename T = char> inline T& get(std::size_t offset = 0)
+	{
+		static_assert(std::is_pod<T>::value, "Invalid get<> type (must be POD)");
+
+		return *reinterpret_cast<T*>(reinterpret_cast<char*>(this + 1) + offset);
+	}
+
+	void* operator new(std::size_t count) = delete;
+
+	inline void* operator new(std::size_t count, std::size_t size)
+	{
+		return new char[count + size];
+	}
+
+	inline void operator delete(void* pointer)
+	{
+		return delete static_cast<char*>(pointer);
+	}
+
+	inline void operator delete(void* pointer, std::size_t size)
+	{
+		return delete static_cast<char*>(pointer);
+	}
+
+	void* operator new[](std::size_t) = delete;
+
+	void operator delete[](void*) = delete;
 };
 
 static_assert(sizeof(packet_storage_t) == 2 * sizeof(std::size_t), "Invalid packet_storage_t size");
@@ -66,7 +84,7 @@ class packet_t final
 		if (m_ptr && !--m_ptr->m_refcnt)
 		{
 			m_ptr->~packet_storage_t();
-			std::free(m_ptr);
+			delete m_ptr;
 		}
 	}
 
@@ -84,6 +102,11 @@ public:
 	}
 
 	packet_t(nullptr_t)
+	{
+	}
+
+	explicit packet_t(std::size_t size)
+		: m_ptr(new (size)packet_storage_t(size))
 	{
 	}
 
@@ -150,21 +173,6 @@ public:
 	}
 };
 
-// Data packet generator
-inline packet_t make_packet(std::size_t size)
-{
-	// allocate memory for ref counter, size and data
-	void* pointer = std::malloc(sizeof(packet_storage_t) + size);
-
-	// initialize ref counter
-	auto storage = new (pointer)packet_storage_t();
-
-	// rewrite size
-	const_cast<std::size_t&>(storage->size) = size;
-
-	return reinterpret_cast<packet_t&&>(pointer);
-}
-
 // Server identifier (UTF8 string)
 static const auto ep_version = "EPClient v0.16";
 
@@ -176,6 +184,7 @@ template<u8 N = 255> struct short_str_t
 	u8 length;
 	char data[N];
 
+	// Make from binary data
 	static short_str_t make(const void* ptr, std::size_t len)
 	{
 		short_str_t res;
@@ -184,31 +193,42 @@ template<u8 N = 255> struct short_str_t
 		return res;
 	}
 
+	// Conversion to std::string
 	operator std::string() const
 	{
 		return{ data, length };
 	}
 
+	// Conversion to another short_str_t
 	template<u8 N2> operator short_str_t<N2>() const
 	{
 		return short_str_t<N2>::make(data, length);
 	}
 
+	// Comparison with std::string
+	bool operator ==(const std::string& right) const
+	{
+		return length == right.size() && std::memcmp(data, right.data(), length) == 0;
+	}
+
+	// Comparison with another short_str_t
 	template<u8 N2> bool operator ==(const short_str_t<N2>& right) const
 	{
 		return length == right.length && std::memcmp(data, right.data, length) == 0;
 	}
 
+	// Conversion to null-terminated string
 	std::unique_ptr<char[]> c_str() const
 	{
 		std::unique_ptr<char[]> res(new char[length + 1]);
 
 		std::memcpy(res.get(), data, length);
-		res.get()[length] = 0;
+		res[length] = 0;
 
 		return res;
 	}
 
+	// Serialize
 	std::size_t save(std::FILE* f) const
 	{
 		std::size_t res = 0;
@@ -217,6 +237,7 @@ template<u8 N = 255> struct short_str_t
 		return res;
 	}
 
+	// Deserialize
 	std::size_t load(std::FILE* f)
 	{
 		*this = {};
@@ -286,11 +307,11 @@ struct ServerTextRec
 	f64 stamp; // message timestamp (OLE automation time)
 	char data[max_size]; // utf-8 text
 
-	static packet_t generate(f64 stamp, const char* text, std::size_t size)
+	static packet_t make(f64 stamp, const char* text, std::size_t size)
 	{
 		const u16 tsize = static_cast<u16>(std::min<std::size_t>(size, max_size)) + 8; // data size
 
-		packet_t packet = make_packet(tsize + 3);
+		packet_t packet(tsize + 3);
 
 		auto& rec = packet->get<ServerTextRec>();
 		rec.header = { SERVER_TEXT, tsize };
@@ -300,9 +321,9 @@ struct ServerTextRec
 		return packet;
 	}
 
-	static packet_t generate(f64 stamp, const std::string& text)
+	static packet_t make(f64 stamp, const std::string& text)
 	{
-		return generate(stamp, text.c_str(), text.size());
+		return make(stamp, text.c_str(), text.size());
 	}
 };
 

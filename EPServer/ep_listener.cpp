@@ -24,7 +24,7 @@ void listener_t::push_packet(packet_t packet)
 
 void listener_t::push(const void* data, u32 size)
 {
-	packet_t packet = make_packet(size);
+	packet_t packet(size);
 
 	std::memcpy(packet->data(), data, size);
 

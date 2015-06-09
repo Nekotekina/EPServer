@@ -12,7 +12,7 @@ player_t::player_t(const std::shared_ptr<account_t>& account, u32 index)
 	account->flags |= PF_LOST; // crutch
 }
 
-void player_t::assign_player_element(PlayerElement& info)
+void player_t::assign_player_element(PlayerElement& info, const std::unique_lock<account_list_t>& acc_lock)
 {
 	if (account->uniq_name.length)
 	{
@@ -142,13 +142,13 @@ bool player_list_t::remove_player(u32 index)
 	return false;
 }
 
-packet_t player_list_t::generate_player_list(u32 self)
+packet_t player_list_t::generate_player_list(u32 self, const std::unique_lock<account_list_t>& acc_lock)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
 	const u16 hsize = static_cast<u16>(8 + sizeof(PlayerElement) * m_list.size());
 
-	packet_t packet = make_packet(hsize + 3);
+	packet_t packet(hsize + 3);
 
 	auto& data = packet->get<ServerListRec>();
 	data.header = { SERVER_PLIST, hsize };
@@ -161,7 +161,7 @@ packet_t player_list_t::generate_player_list(u32 self)
 	{
 		if (player)
 		{
-			player->assign_player_element(*info++);
+			player->assign_player_element(*info++, acc_lock);
 		}
 		else
 		{
@@ -172,9 +172,9 @@ packet_t player_list_t::generate_player_list(u32 self)
 	return packet;
 }
 
-void player_list_t::update_player(const std::shared_ptr<player_t>& player, bool removed)
+void player_list_t::update_player(const std::shared_ptr<player_t>& player, const std::unique_lock<account_list_t>& acc_lock, bool removed)
 {
-	packet_t packet = make_packet(sizeof(ServerUpdatePlayer));
+	packet_t packet(sizeof(ServerUpdatePlayer));
 
 	auto& data = packet->get<ServerUpdatePlayer>();
 	data.header.code = SERVER_PUPDATE;
@@ -187,7 +187,7 @@ void player_list_t::update_player(const std::shared_ptr<player_t>& player, bool 
 	}
 	else
 	{
-		player->assign_player_element(data.data);
+		player->assign_player_element(data.data, acc_lock);
 	}
 
 	broadcast(std::move(packet));
@@ -198,18 +198,4 @@ std::shared_ptr<player_t> player_list_t::get_player(u32 index)
 	std::lock_guard<std::mutex> lock(m_mutex);
 
 	return index < m_list.size() ? m_list[index] : nullptr;
-}
-
-
-void player_list_t::broadcast(packet_t packet, const std::function<bool(player_t&)> pred)
-{
-	std::lock_guard<std::mutex> lock(m_mutex);
-
-	for (auto& player : m_list)
-	{
-		if (player && (!pred || pred(*player)))
-		{
-			player->broadcast(packet);
-		}
-	}
 }

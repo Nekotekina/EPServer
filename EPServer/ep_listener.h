@@ -30,13 +30,13 @@ public:
 
 	void push_text(const std::string& text)
 	{
-		push_packet(ServerTextRec::generate(GetTime(), text));
+		push_packet(ServerTextRec::make(GetTime(), text));
 	}
 
 	void stop()
 	{
 		stop_flag.test_and_set();
-		push_packet(packet_t{}); // use empty message as stop message
+		push_packet(nullptr); // use empty message as stop message
 	}
 
 	packet_t pop(u32 timeout_ms, const packet_t& default_packet);

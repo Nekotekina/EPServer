@@ -41,12 +41,45 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 	std::this_thread::sleep_for(std::chrono::seconds(1));
 
+	std::string cached_name;
+
+	auto set_online = [&]
+	{
+		const auto flags = account->flags.fetch_and(~PF_OFF);
+
+		if (flags & PF_OFF)
+		{
+			g_players.update_player(player, std::unique_lock<account_list_t>(g_accounts));
+			g_players.broadcast(cached_name + "%/ is online.", only_online);
+		}
+	};
+
+	auto set_offline = [&]
+	{
+		const auto flags = account->flags.fetch_or(PF_OFF);
+
+		if (~flags & PF_OFF)
+		{
+			g_players.update_player(player, std::unique_lock<account_list_t>(g_accounts));
+			g_players.broadcast(cached_name + "%/ is offline.", [&](player_t& p) -> bool
+			{
+				return only_online(p) || player.get() == &p;
+			});
+		}
+	};
+
 	ProtocolHeader header;
 	ClientCmdRec cmd;
 
 	while (socket->flush(), socket->get(header))
 	{
 		// TODO: reset last activity time
+
+		// Update cached name
+		if (!(account->uniq_name.length != 0 && account->uniq_name == cached_name) && !(account->name == cached_name))
+		{
+			cached_name = account->get_name(std::unique_lock<account_list_t>(g_accounts));
+		}
 
 		if (header.code == CLIENT_CMD && header.size >= 14)
 		{
@@ -85,13 +118,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					}
 					else
 					{
-						if (account->flags.fetch_and(~PF_OFF) & PF_OFF)
-						{
-							g_players.broadcast(account->get_name() + "%/ is online.", only_online);
-							g_players.update_player(player);
-						}
-
-						g_players.broadcast(account->get_name() + "%/ %bwrites:%x " + message + "%x", only_online);
+						set_online();
+						g_players.broadcast(cached_name + "%/ %bwrites:%x " + message + "%x", only_online);
 					}
 
 					// ~207 ms + 1 ms per character
@@ -107,7 +135,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					}
 					else if (const auto target = g_players.get_player(cmd.v0))
 					{
-						target->broadcast(account->get_name() + "%/%p%g writes (private):%x " + message + "%x");
+						target->broadcast(cached_name + "%/%p%g writes (private):%x " + message + "%x");
 					}
 					else
 					{
@@ -134,13 +162,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					}
 					else
 					{
-						if (account->flags.fetch_and(~PF_OFF) & PF_OFF)
-						{
-							g_players.broadcast(account->get_name() + "%/ is online.", only_online);
-							g_players.update_player(player);
-						}
-
-						g_players.broadcast(account->get_name() + "%/ throws " + FormatDice(cmd.v1), only_online);
+						set_online();
+						g_players.broadcast(cached_name + "%/ throws " + FormatDice(cmd.v1), only_online);
 					}
 
 					// 200 ms
@@ -162,9 +185,9 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						const std::string dice = FormatDice(cmd.v1);
 
-						target->broadcast(account->get_name() + "%/%p throws " + dice + " to you (private)");
+						target->broadcast(cached_name + "%/%p throws " + dice + " to you (private)");
 
-						listener->push_text("You throw " + dice + "%/ to " + target->account->get_name());
+						listener->push_text("You throw " + dice + "%/ to " + target->account->get_name(std::unique_lock<account_list_t>(g_accounts)));
 					}
 					else
 					{
@@ -184,9 +207,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			{
 				if (account->flags & PF_SUPERADMIN)
 				{
-					std::string message(cmd.data, text_size);
-
-					g_players.broadcast(account->get_name() + "%/ %bwrites:%x " + message + "%x");
+					g_players.broadcast(cached_name + "%/ %bwrites:%x " + std::string(cmd.data, text_size) + "%x");
 				}
 				else
 				{
@@ -198,11 +219,16 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			{
 				if (cmd.v0 == -1 && !cmd.v1 && !cmd.v2)
 				{
-					account->email = short_str_t<255>::make(cmd.data, text_size);
-					listener->push_text("E-mail set:");
-					listener->push_text(account->email);
+					{
+						std::unique_lock<account_list_t> acc_lock(g_accounts);
 
-					g_accounts.save();
+						account->email = short_str_t<255>::make(cmd.data, text_size);
+
+						g_accounts.save(acc_lock);
+					}
+
+					listener->push_text("E-mail set:");
+					listener->push_text({ cmd.data, std::min<u16>(255, text_size) });
 
 					std::this_thread::sleep_for(std::chrono::seconds(1));
 				}
@@ -213,11 +239,16 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 						// find cmd.v0 player and set email
 						if (const auto target = g_players.get_player(cmd.v0))
 						{
-							target->account->email = short_str_t<255>::make(cmd.data, text_size);
-							listener->push_text("E-mail set:"); // TODO (message)
-							listener->push_text(target->account->email);
+							{
+								std::unique_lock<account_list_t> acc_lock(g_accounts);
 
-							g_accounts.save();
+								target->account->email = short_str_t<255>::make(cmd.data, text_size);
+
+								g_accounts.save(acc_lock);
+							}
+
+							listener->push_text("E-mail set:"); // TODO (message)
+							listener->push_text({ cmd.data, std::min<u16>(255, text_size) });
 						}
 						else
 						{
@@ -253,10 +284,15 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 					if (old == account->pass)
 					{
-						account->pass = *reinterpret_cast<md5_t*>(cmd.data);
-						listener->push_text("Password updated.");
+						{
+							std::unique_lock<account_list_t> acc_lock(g_accounts);
 
-						g_accounts.save();
+							account->pass = *reinterpret_cast<md5_t*>(cmd.data);
+
+							g_accounts.save(acc_lock);
+						}
+
+						listener->push_text("Password updated.");
 					}
 					else
 					{
@@ -274,10 +310,15 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 						// find cmd.v0 player and reset password
 						if (const auto target = g_players.get_player(cmd.v0))
 						{
-							target->account->pass = *reinterpret_cast<md5_t*>(cmd.data);
-							listener->push_text("Password updated."); // TODO (message)
+							{
+								std::unique_lock<account_list_t> acc_lock(g_accounts);
 
-							g_accounts.save();
+								target->account->pass = *reinterpret_cast<md5_t*>(cmd.data);
+
+								g_accounts.save(acc_lock);
+							}
+
+							listener->push_text("Password updated."); // TODO (message)
 						}
 						else
 						{
@@ -317,7 +358,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 								listener->push_text("Flag [" + std::string(FlagName[cmd.v1]) + "] has been set.");
 							}
 
-							g_accounts.save();
+							g_accounts.save(std::unique_lock<account_list_t>(g_accounts));
 						}
 						else
 						{
@@ -362,6 +403,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					// find cmd.v0 player and display information
 					if (const auto target = g_players.get_player(cmd.v0))
 					{
+						std::lock_guard<account_list_t> acc_lock(g_accounts);
+
 						std::string info;
 
 						info += "\nLogin: ";
@@ -423,12 +466,16 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					// find cmd.v0 player and set unique name
 					if (const auto target = g_players.get_player(cmd.v0))
 					{
-						target->account->uniq_name = short_str_t<48>::make(cmd.data, text_size);
+						{
+							std::unique_lock<account_list_t> acc_lock(g_accounts);
+
+							target->account->uniq_name = short_str_t<48>::make(cmd.data, text_size);
+
+							g_accounts.save(acc_lock);
+						}
 
 						listener->push_text("Unique name set:"); // TODO (message)
-						listener->push_text(target->account->uniq_name);
-
-						g_accounts.save();
+						listener->push_text({ cmd.data, std::min<u16>(48, text_size) });
 					}
 					else
 					{
@@ -543,35 +590,20 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 			case SCMD_HIDE:
 			{
-				if (~account->flags.fetch_or(PF_OFF) & PF_OFF)
-				{
-					const auto packet = ServerTextRec::generate(GetTime(), account->get_name() + "%/ is offline.");
-					
-					// send additional dedicated message because it's hidden by PF_OFF flag
-					player->broadcast(packet);
-
-					g_players.broadcast(packet, only_online);
-					g_players.update_player(player);
-				}
-
+				set_offline();
 				std::this_thread::sleep_for(std::chrono::milliseconds(300));
 				break;
 			}
 			case SCMD_SHOW:
 			{
-				if (account->flags.fetch_and(~PF_OFF) & PF_OFF)
-				{
-					g_players.broadcast(account->get_name() + "%/ is online.", only_online);
-					g_players.update_player(player);
-				}
-
+				set_online();
 				std::this_thread::sleep_for(std::chrono::milliseconds(300));
 				break;
 			}
 			case SCMD_REFRESH:
 			{
 				// Update player list (it shouldn't be necessary to use it)
-				listener->push_packet(g_players.generate_player_list(player->index));
+				listener->push_packet(g_players.generate_player_list(player->index, std::unique_lock<account_list_t>(g_accounts)));
 
 				std::this_thread::sleep_for(std::chrono::seconds(1));
 				break;
@@ -613,7 +645,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 {
 	auto message = [](socket_t& socket, const char* text)
 	{
-		const packet_t packet = ServerTextRec::generate(GetTime(), text, strlen(text));
+		const packet_t packet = ServerTextRec::make(GetTime(), text, strlen(text));
 
 		socket.put(packet->data(), packet->size);
 	};
@@ -635,7 +667,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		// validate auth packet content
 		if ((header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
 			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
-			(auth_info = make_packet(header.size), !socket->get(auth_info->data(), header.size)))
+				(auth_info = packet_t{ header.size }, !socket->get(auth_info->data(), header.size)))
 		{
 			ep_printf_ip("- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
 			message(*socket, "Handshake failed.");
@@ -664,7 +696,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 				if (num == 0)
 				{
 					// fix data displacement (allocate new block)
-					packet_t new_info = make_packet(g_key_size - i);
+					packet_t new_info{ g_key_size - i };
 					std::memcpy(new_info->data(), &auth_info->get(i), new_info->size);
 					auth_info = std::move(new_info);
 					break;
@@ -678,7 +710,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 			}
 			else
 			{
-				packet_t key = make_packet(32);
+				packet_t key{ 32 };
 
 				// copy session key
 				std::memcpy(key->data(), auth_info->get<SecureAuthRec>().ckey, key->size);
@@ -748,32 +780,36 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 	// send version information
 	listener->push(version_info);
 
-	// send player list
-	listener->push_packet(g_players.generate_player_list(player->index));
-
 	listener->push_text("EPServer git version: " GIT_VERSION); // TODO: print greeting and something else
 
-	if (account->flags.fetch_and(~PF_NEW_PLAYER) & PF_NEW_PLAYER) // new player connected
 	{
-		g_players.update_player(player);
-		g_players.broadcast(account->get_name() + "%/ connected as a new player.", only_online);
-		g_accounts.save();
-	}
-	else if (account->flags.fetch_and(~PF_LOST) & PF_LOST) // connection restored
-	{
-		g_players.update_player(player);
-		g_players.broadcast(account->get_name() + "%/ connected.", only_online);
-	}
-	else
-	{
-		g_players.update_player(player); // silent reconnection
+		std::unique_lock<account_list_t> acc_lock(g_accounts);
+
+		// send player list
+		listener->push_packet(g_players.generate_player_list(player->index, acc_lock));
+
+		if (account->flags.fetch_and(~PF_NEW_PLAYER) & PF_NEW_PLAYER) // new player connected
+		{
+			g_players.update_player(player, acc_lock);
+			g_players.broadcast(account->get_name(acc_lock) + "%/ connected as a new player.", only_online);
+			g_accounts.save(acc_lock);
+		}
+		else if (account->flags.fetch_and(~PF_LOST) & PF_LOST) // connection restored
+		{
+			g_players.update_player(player, acc_lock);
+			g_players.broadcast(account->get_name(acc_lock) + "%/ connected.", only_online);
+		}
+		else
+		{
+			g_players.update_player(player, acc_lock); // silent reconnection
+		}
 	}
 
 	// start receiver subthread (it shouldn't send data directly)
 	std::thread(receiver_thread, socket, account, player, listener).detach();
 
 	// start sending packets
-	while (packet_t packet = listener->pop(30000, g_keepalive_packet))
+	while (packet_t packet{ listener->pop(30000, g_keepalive_packet) })
 	{
 		if (!socket->put(packet->data(), packet->size))
 		{
@@ -784,17 +820,19 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 	// detect connection lost
 	if (player->remove_listener(listener) == PS_CONNECTION_LOST)
 	{
+		std::unique_lock<account_list_t> acc_lock(g_accounts);
+
 		// check if the quit command has been sent
 		if (listener->quit_flag.test_and_set())
 		{
-			g_players.broadcast(account->get_name() + "%/ has quit.", only_online);
-			g_players.update_player(player, true);
+			g_players.broadcast(account->get_name(acc_lock) + "%/ has quit.", only_online);
+			g_players.update_player(player, acc_lock, true);
 			g_players.remove_player(player->index);
 		}
 		else
 		{
-			g_players.broadcast(account->get_name() + "%/ lost connection with server.", only_online);
-			g_players.update_player(player);
+			g_players.update_player(player, acc_lock);
+			g_players.broadcast(account->get_name(acc_lock) + "%/ lost connection with server.", only_online);
 		}
 	}
 
@@ -809,23 +847,36 @@ void stop(int x)
 	g_players.broadcast(packet_t{});
 
 	std::this_thread::sleep_for(std::chrono::seconds(1));
+
+	std::unique_lock<account_list_t> acc_lock(g_accounts);
 	
-	g_accounts.save();
-	g_accounts.lock();
+	g_accounts.save(acc_lock);
+	acc_lock.release(); // leave locked
 	g_server.close();
+}
+
+void fault(int x)
+{
+	ep_printf("Access violation.\n");
+
+	g_accounts.lock(); // leave locked
+	std::terminate();
 }
 
 int main(int arg_count, const char* args[])
 {
-	ep_printf("%s", "\n");
-
-#ifdef __unix__
-	//std::signal(SIGPIPE, SIG_IGN); // ignore SIGPIPE (disabled)
-#endif
+	ep_printf("EPServer started.\n");
 
 	if (std::signal(SIGINT, stop) == SIG_ERR)
 	{
 		std::printf("signal(SIGINT) failed");
+		return 0;
+	}
+
+	if (std::signal(SIGSEGV, fault) == SIG_ERR)
+	{
+		std::printf("signal(SIGSEGV) failed");
+		return 0;
 	}
 
 	std::printf("EPServer git version: " GIT_VERSION "\n");
@@ -845,7 +896,7 @@ int main(int arg_count, const char* args[])
 		const u32 size = std::ftell(f.get());
 
 		// get file content
-		packet_t keys = make_packet(size + 1);
+		packet_t keys{ size + 1 };
 		std::fseek(f.get(), 0, SEEK_SET);
 		std::fread(keys->data(), 1, size, f.get());
 
@@ -896,7 +947,7 @@ int main(int arg_count, const char* args[])
 			g_key_size = static_cast<u32>(mpz_size(g_key_d.get_mpz_t()) * sizeof(mp_limb_t));
 
 			// prepare auth packet
-			g_auth_packet = make_packet(3 + g_key_size * 2);
+			g_auth_packet = packet_t{ 3 + g_key_size * 2 };
 			g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(g_key_size * 2) };
 
 			// convert to base 256
@@ -918,11 +969,11 @@ int main(int arg_count, const char* args[])
 
 	if (g_auth_packet->size == 0)
 	{
-		g_auth_packet = make_packet(3);
+		g_auth_packet = packet_t{ 3 };
 		g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH };
 	}
 
-	g_keepalive_packet = make_packet(5);
+	g_keepalive_packet = packet_t{ 5 };
 	g_keepalive_packet->get<ClientSCmdRec>() = { { CLIENT_SCMD, 2 }, SCMD_NONE };
 
 #ifdef _WIN32
@@ -954,7 +1005,7 @@ int main(int arg_count, const char* args[])
 	info.sin_addr.s_addr = INADDR_ANY;
 	info.sin_port = htons(4044);
 
-	if (bind(sid, (sockaddr*)&info, sizeof(sockaddr_in)) == SOCKET_ERROR)
+	if (bind(sid, reinterpret_cast<sockaddr*>(&info), sizeof(sockaddr_in)) == SOCKET_ERROR)
 	{
 		std::printf("bind() failed: 0x%x\n", GETERROR);
 		return -1;
@@ -970,15 +1021,15 @@ int main(int arg_count, const char* args[])
 	{
 		// accept connection
 		socklen_t size = sizeof(sockaddr_in);
-		socket_id_t aid = accept(sid, (sockaddr*)&info, &size);
+		socket_id_t aid = accept(sid, reinterpret_cast<sockaddr*>(&info), &size);
 
 		if (aid == INVALID_SOCKET)
 		{
-			ep_printf("%s", "EPServer stopped.\n");
+			ep_printf("EPServer stopped.\n");
 			return 0;
 		}
 
-		ep_printf_ip("%s", info.sin_addr, info.sin_port, "+\n");
+		ep_printf_ip("+\n", info.sin_addr, info.sin_port);
 
 		// start client thread
 		std::thread(sender_thread, std::make_shared<socket_t>(aid), info.sin_addr, info.sin_port).detach();

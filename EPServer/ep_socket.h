@@ -167,7 +167,7 @@ public:
 
 		for (std::size_t i = 0; i < asize / 16; i++)
 		{
-			m_cipher.encrypt_block_cbc(buf.get()[i]);
+			m_cipher.encrypt_block_cbc(buf[i]);
 		}
 
 		return socket_t::put(buf.get(), asize);
@@ -197,7 +197,7 @@ public:
 
 			for (u32 i = 0; i < asize / 16; i++)
 			{
-				m_cipher.decrypt_block_cbc(buf.get()[i]);
+				m_cipher.decrypt_block_cbc(buf[i]);
 			}
 			
 			std::memcpy(data, buf.get(), size);

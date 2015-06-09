@@ -45,15 +45,19 @@ bool account_t::load(std::FILE* f)
 	return true;
 }
 
-bool account_list_t::save()
+bool account_list_t::save(const std::unique_lock<account_list_t>& acc_lock)
 {
-	std::lock_guard<std::mutex> lock(m_mutex);
+	if (!acc_lock || m_mutex.try_lock())
+	{
+		std::printf("account.dat writing failed: mutex not locked\n");
+		return false;
+	}
 
 	unique_FILE f(std::fopen("account.dat", "wb"));
 
 	if (!f)
 	{
-		std::printf("account.dat writing failed!\n");
+		std::printf("account.dat writing failed: file access error\n");
 		return false;
 	}
 
@@ -92,12 +96,7 @@ bool account_list_t::load()
 	return true;
 }
 
-void account_list_t::lock()
-{
-	return m_mutex.lock();
-}
-
-std::shared_ptr<account_t> account_list_t::add_account(short_str_t<16> name, md5_t pass)
+std::shared_ptr<account_t> account_list_t::add_account(const short_str_t<16>& name, const md5_t& pass)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
