@@ -347,6 +347,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 						// find cmd.v0 player and change flag
 						if (const auto target = g_players.get_player(cmd.v0))
 						{
+							std::unique_lock<account_list_t> acc_lock(g_accounts);
+
 							// TODO (message)
 
 							if (target->account->flags.fetch_xor(flag) & flag)
@@ -358,7 +360,9 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 								listener->push_text("Flag [" + std::string(FlagName[cmd.v1]) + "] has been set.");
 							}
 
-							g_accounts.save(std::unique_lock<account_list_t>(g_accounts));
+							g_players.update_player(target, acc_lock);
+
+							g_accounts.save(acc_lock);
 						}
 						else
 						{
@@ -470,6 +474,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 							std::unique_lock<account_list_t> acc_lock(g_accounts);
 
 							target->account->uniq_name = short_str_t<48>::make(cmd.data, text_size);
+
+							g_players.update_player(target, acc_lock);
 
 							g_accounts.save(acc_lock);
 						}
@@ -665,9 +671,8 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		packet_t auth_info;
 
 		// validate auth packet content
-		if ((header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
-			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
-				(auth_info = packet_t{ header.size }, !socket->get(auth_info->data(), header.size)))
+		if ((g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
+			(auth_info = packet_t{ header.size }, !socket->get(auth_info->data(), header.size)))
 		{
 			ep_printf_ip("- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
 			message(*socket, "Handshake failed.");
