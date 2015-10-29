@@ -60,7 +60,7 @@ public:
 
 	std::shared_ptr<player_t> get_player(u32 index);
 
-	template<typename T> inline void broadcast(packet_t packet, const T pred)
+	template<typename T> void broadcast(packet_t packet, const T pred)
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -78,7 +78,7 @@ public:
 		broadcast(packet, all_players);
 	}
 
-	template<typename T> inline void broadcast(const std::string& text, const T pred)
+	template<typename T> void broadcast(const std::string& text, const T pred)
 	{
 		broadcast(ServerTextRec::make(GetTime(), text), pred);
 	}

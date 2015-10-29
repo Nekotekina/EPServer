@@ -13,7 +13,7 @@
 
 #include "../git-version.inl"
 
-const ServerVersionRec version_info = { SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, short_str_t<30>::make(ep_version, strlen(ep_version)) };
+const ServerVersionRec version_info{ SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, std::string(EP_VERSION) };
 
 account_list_t g_accounts;
 player_list_t g_players;
@@ -76,7 +76,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 		// TODO: reset last activity time
 
 		// Update cached name
-		if (!(account->uniq_name.length != 0 && account->uniq_name == cached_name) && !(account->name == cached_name))
+		if (!(account->uniq_name.size() != 0 && account->uniq_name == cached_name) && !(account->name == cached_name))
 		{
 			cached_name = account->get_name(std::unique_lock<account_list_t>(g_accounts));
 		}
@@ -222,7 +222,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						std::unique_lock<account_list_t> acc_lock(g_accounts);
 
-						account->email = short_str_t<255>::make(cmd.data, text_size);
+						account->email = { cmd.data, text_size };
 
 						g_accounts.save(acc_lock);
 					}
@@ -242,7 +242,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 							{
 								std::unique_lock<account_list_t> acc_lock(g_accounts);
 
-								target->account->email = short_str_t<255>::make(cmd.data, text_size);
+								target->account->email = { cmd.data, text_size };
 
 								g_accounts.save(acc_lock);
 							}
@@ -473,7 +473,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 						{
 							std::unique_lock<account_list_t> acc_lock(g_accounts);
 
-							target->account->uniq_name = short_str_t<48>::make(cmd.data, text_size);
+							target->account->uniq_name = { cmd.data, text_size };
 
 							g_players.update_player(target, acc_lock);
 
@@ -671,7 +671,8 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		packet_t auth_info;
 
 		// validate auth packet content
-		if ((g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
+		if ((g_key_size != 0 || header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
+			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
 			(auth_info = packet_t{ header.size }, !socket->get(auth_info->data(), header.size)))
 		{
 			ep_printf_ip("- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
@@ -728,9 +729,9 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		auto& auth = auth_info->get<ClientAuthRec>();
 
 		// check login
-		if (auth.name.length > 16 || !IsLoginValid(auth.name.data, auth.name.length))
+		if (auth.name.size() > 16 || !IsLoginValid(auth.name.data(), auth.name.size()))
 		{
-			ep_printf_ip("- (AUTH-3) (%d)\n", ip, port, auth.name.length);
+			ep_printf_ip("- (AUTH-3) (%z)\n", ip, port, auth.name.size());
 			message(*socket, "Invalid login.");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -885,7 +886,7 @@ int main(int arg_count, const char* args[])
 	}
 
 	std::printf("EPServer git version: " GIT_VERSION "\n");
-	std::printf("EPServer client version: '%s'\n", ep_version);
+	std::printf("EPServer client version: " EP_VERSION "\n");
 
 	std::printf("ipv4.dat not loaded!\n"); // TODO: load IP db
 	std::printf("ipv6.dat not loaded!\n"); // TODO: IPv6 support

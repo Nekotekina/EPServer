@@ -1,24 +1,6 @@
 #include "stdafx.h"
 #include "rc6.h"
 
-inline u32 rol32(u32 v, u32 s)
-{
-#if defined(_MSC_VER)
-	return _rotl(v, s);
-#else
-	return (v << s) | (v >> (32 - s));
-#endif
-}
-
-inline u32 ror32(u32 v, u32 s)
-{
-#if defined(_MSC_VER)
-	return _rotr(v, s);
-#else
-	return (v >> s) | (v << (32 - s));
-#endif
-}
-
 rc6_cipher_t::rc6_cipher_t(packet_t key)
 {
 	if (key->size != 16 && key->size != 32 && key->size != 64)
@@ -54,9 +36,9 @@ rc6_cipher_t::rc6_cipher_t(packet_t key)
 
 rc6_cipher_t::~rc6_cipher_t()
 {
-	m_s = {}; // burn
-	m_enc_last = {};
-	m_dec_last = {};
+	std::memset(m_s.data(), 0, m_s.size()); // burn
+	m_enc_last.clear();
+	m_dec_last.clear();
 }
 
 void rc6_cipher_t::encrypt_block_cbc(rc6_block_t& block)

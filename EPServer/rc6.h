@@ -1,4 +1,5 @@
 #pragma once
+
 #include <emmintrin.h>
 #include "ep_defines.h"
 
@@ -18,6 +19,11 @@ union rc6_block_t
 	//{
 	//	return _mm_free(p);
 	//}
+
+	void clear()
+	{
+		vi = _mm_setzero_si128();
+	}
 };
 
 class rc6_cipher_t final

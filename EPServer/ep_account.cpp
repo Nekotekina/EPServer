@@ -4,10 +4,10 @@
 
 void account_t::save(std::FILE* f)
 {
-	u32 size = name.length + 1 + 16 + 8 + uniq_name.length + 1 + email.length + 1;
+	const u32 size = name.size() + 1 + 16 + 8 + uniq_name.size() + 1 + email.size() + 1;
 	std::fwrite(&size, 1, 4, f);
 
-	u64 _flags = flags.load(std::memory_order_relaxed) & ~PF_VOLATILE_FLAGS;
+	const u64 _flags = flags.load(std::memory_order_relaxed) & ~PF_VOLATILE_FLAGS;
 	std::fwrite(&_flags, 1, 8, f);
 	std::fwrite(pass.data(), 1, pass.size(), f);
 

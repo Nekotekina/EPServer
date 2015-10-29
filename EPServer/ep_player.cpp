@@ -14,7 +14,7 @@ player_t::player_t(const std::shared_ptr<account_t>& account, u32 index)
 
 void player_t::assign_player_element(PlayerElement& info, const std::unique_lock<account_list_t>& acc_lock)
 {
-	if (account->uniq_name.length)
+	if (account->uniq_name.size())
 	{
 		info.name = account->uniq_name;
 	}

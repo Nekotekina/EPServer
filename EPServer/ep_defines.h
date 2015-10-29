@@ -38,12 +38,12 @@ class packet_storage_t final
 public:
 	const std::size_t size;
 
-	inline void* data()
+	void* data()
 	{
 		return this + 1;
 	}
 
-	template<typename T = char> inline T& get(std::size_t offset = 0)
+	template<typename T = char> T& get(std::size_t offset = 0)
 	{
 		static_assert(std::is_pod<T>::value, "Invalid get<> type (must be POD)");
 
@@ -52,17 +52,17 @@ public:
 
 	void* operator new(std::size_t count) = delete;
 
-	inline void* operator new(std::size_t count, std::size_t size)
+	void* operator new(std::size_t count, std::size_t size)
 	{
 		return new char[count + size];
 	}
 
-	inline void operator delete(void* pointer)
+	void operator delete(void* pointer)
 	{
 		return delete static_cast<char*>(pointer);
 	}
 
-	inline void operator delete(void* pointer, std::size_t size)
+	void operator delete(void* pointer, std::size_t size)
 	{
 		return delete static_cast<char*>(pointer);
 	}
@@ -174,66 +174,90 @@ public:
 };
 
 // Server identifier (UTF8 string)
-static const auto ep_version = "EPClient v0.16";
+#define EP_VERSION "EPClient v0.16"
 
 // Pascal short string type (used in some structs)
-template<u8 N = 255> struct short_str_t
+template<u8 N = 255> class short_str_t
 {
 	static_assert(N, "Invalid short_str_t size");
 
-	u8 length;
-	char data[N];
+	u8 m_size;
+	char m_data[N];
 
-	// Make from binary data
-	static short_str_t make(const void* ptr, std::size_t len)
+public:
+	// Default constructor for POD type
+	short_str_t() = default;
+
+	// Construct using pointer and length
+	short_str_t(const char* str, std::size_t len)
+		: m_size(static_cast<u8>(std::min<std::size_t>(len, N)))
 	{
-		short_str_t res;
-		std::memcpy(res.data, ptr, res.length = static_cast<u8>(std::min<std::size_t>(len, N)));
-		std::memset(res.data + res.length, 0, N - res.length);
-		return res;
+		std::memcpy(m_data, str, m_size);
+		std::memset(m_data + m_size, 0, N - m_size);
 	}
 
-	// Conversion to std::string
+	// Construct from std::string
+	short_str_t(const std::string& str)
+		: short_str_t(str.data(), str.size())
+	{
+	}
+
+	// Default assignment operator
+	short_str_t& operator =(const short_str_t&) = default;
+
+	// Convert to std::string
 	operator std::string() const
 	{
-		return{ data, length };
+		return{ m_data, m_size };
 	}
 
-	// Conversion to another short_str_t
+	// Convert to another short_str_t
 	template<u8 N2> operator short_str_t<N2>() const
 	{
-		return short_str_t<N2>::make(data, length);
+		return{ m_data, m_size };
 	}
 
-	// Comparison with std::string
+	// Compare with std::string
 	bool operator ==(const std::string& right) const
 	{
-		return length == right.size() && std::memcmp(data, right.data(), length) == 0;
+		return m_size == right.size() && std::memcmp(m_data, right.data(), m_size) == 0;
 	}
 
-	// Comparison with another short_str_t
+	// Compare with another short_str_t
 	template<u8 N2> bool operator ==(const short_str_t<N2>& right) const
 	{
-		return length == right.length && std::memcmp(data, right.data, length) == 0;
+		return m_size == right.size() && std::memcmp(m_data, right.data(), m_size) == 0;
 	}
 
-	// Conversion to null-terminated string
+	// Convert to null-terminated string
 	std::unique_ptr<char[]> c_str() const
 	{
-		std::unique_ptr<char[]> res(new char[length + 1]);
+		std::unique_ptr<char[]> res(new char[m_size + 1]);
 
-		std::memcpy(res.get(), data, length);
-		res[length] = 0;
+		std::memcpy(res.get(), m_data, m_size);
+		res[m_size] = 0;
 
 		return res;
+	}
+
+	// Get size
+	std::size_t size() const
+	{
+		return m_size;
+	}
+
+	// Get data
+	const char* data() const
+	{
+		return m_data;
 	}
 
 	// Serialize
 	std::size_t save(std::FILE* f) const
 	{
 		std::size_t res = 0;
-		res += std::fwrite(&length, 1, 1, f);
-		res += std::fwrite(data, 1, length, f);
+		res += std::fwrite(&m_size, 1, 1, f);
+		res += std::fwrite(m_data, 1, m_size, f);
 		return res;
 	}
 
@@ -242,8 +266,8 @@ template<u8 N = 255> struct short_str_t
 	{
 		*this = {};
 		std::size_t res = 0;
-		res += std::fread(&length, 1, 1, f);
-		res += std::fread(data, 1, length, f);
+		res += std::fread(&m_size, 1, 1, f);
+		res += std::fread(m_data, 1, m_size, f);
 		return res;
 	}
 };

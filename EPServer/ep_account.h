@@ -19,7 +19,7 @@ public:
 
 	std::string get_name(const std::unique_lock<account_list_t>& acc_lock)
 	{
-		return uniq_name.length ? std::string(uniq_name) : std::string(name);
+		if (uniq_name.size()) return uniq_name; else return name;
 	}
 };
 

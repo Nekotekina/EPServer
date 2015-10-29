@@ -140,17 +140,16 @@ class cipher_socket_t : public socket_t
 {
 protected:
 	rc6_cipher_t m_cipher;
-	short_str_t<15> m_received;
+	short_str_t<15> m_received{};
 
 public:
 	cipher_socket_t(socket_id_t socket, packet_t key)
 		: socket_t(socket)
 		, m_cipher(std::move(key))
-		, m_received({})
 	{
 	}
 
-	virtual ~cipher_socket_t()
+	virtual ~cipher_socket_t() override
 	{
 		m_received = {}; // burn
 	}
@@ -176,10 +175,10 @@ public:
 	virtual bool get(void* data, std::size_t size) override
 	{
 		// try to get saved data
-		if (const auto read = std::min<std::size_t>(m_received.length, size))
+		if (const auto read = std::min<std::size_t>(m_received.size(), size))
 		{
-			std::memcpy(data, m_received.data, read);
-			m_received = short_str_t<15>::make(m_received.data + read, m_received.length - read); // shrink saved data
+			std::memcpy(data, m_received.data(), read);
+			m_received = { m_received.data() + read, m_received.size() - read }; // shrink saved data
 
 			size -= read;
 			data = static_cast<u8*>(data) + read;
@@ -201,7 +200,7 @@ public:
 			}
 			
 			std::memcpy(data, buf.get(), size);
-			m_received = short_str_t<15>::make(reinterpret_cast<u8*>(buf.get()) + size, asize - size); // save exceeded data
+			m_received = { reinterpret_cast<char*>(buf.get()) + size, asize - size }; // save exceeded data
 
 			std::memset(buf.get(), 0, asize); // burn
 		}

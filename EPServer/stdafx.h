@@ -51,3 +51,13 @@ struct FILE_deleter
 using unique_FILE = std::unique_ptr<std::FILE, FILE_deleter>;
 
 void print_time();
+
+inline u32 rol32(u32 v, u32 s)
+{
+	return (v << s) | (v >> (32 - s));
+}
+
+inline u32 ror32(u32 v, u32 s)
+{
+	return (v >> s) | (v << (32 - s));
+}
