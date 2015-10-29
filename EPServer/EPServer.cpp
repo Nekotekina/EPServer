@@ -13,7 +13,7 @@
 
 #include "../git-version.inl"
 
-const ServerVersionRec version_info{ SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, std::string(EP_VERSION) };
+const ServerVersionRec version_info{ SERVER_VERSIONINFO, sizeof(ServerVersionRec) - 3, { EP_VERSION } };
 
 account_list_t g_accounts;
 player_list_t g_players;
@@ -50,7 +50,17 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 		if (flags & PF_OFF)
 		{
 			g_players.update_player(player, std::unique_lock<account_list_t>(g_accounts));
-			g_players.broadcast(cached_name + "%/ is online.", only_online);
+
+			const auto& text = cached_name + "%/ is online.";
+
+			if (~account->flags & PF_SHADOWBAN)
+			{
+				g_players.broadcast(text, only_online);
+			}
+			else
+			{
+				player->broadcast(text);
+			}
 		}
 	};
 
@@ -61,10 +71,15 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 		if (~flags & PF_OFF)
 		{
 			g_players.update_player(player, std::unique_lock<account_list_t>(g_accounts));
-			g_players.broadcast(cached_name + "%/ is offline.", [&](player_t& p) -> bool
+
+			const auto& text = cached_name + "%/ is offline.";
+
+			if (~account->flags & PF_SHADOWBAN)
 			{
-				return only_online(p) || player.get() == &p;
-			});
+				g_players.broadcast(text, only_online);
+			}
+
+			player->broadcast(text);
 		}
 	};
 
@@ -119,7 +134,17 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					else
 					{
 						set_online();
-						g_players.broadcast(cached_name + "%/ %bwrites:%x " + message + "%x", only_online);
+
+						const auto& text = cached_name + "%/ %bwrites:%x " + message + "%x";
+
+						if (~account->flags & PF_SHADOWBAN)
+						{
+							g_players.broadcast(text, only_online);
+						}
+						else
+						{
+							player->broadcast(text);
+						}
 					}
 
 					// ~207 ms + 1 ms per character
@@ -135,7 +160,10 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					}
 					else if (const auto target = g_players.get_player(cmd.v0))
 					{
-						target->broadcast(cached_name + "%/%p%g writes (private):%x " + message + "%x");
+						if (~account->flags & PF_SHADOWBAN || player == target)
+						{
+							target->broadcast(cached_name + "%/%p%g writes (private):%x " + message + "%x");
+						}
 					}
 					else
 					{
@@ -163,7 +191,17 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					else
 					{
 						set_online();
-						g_players.broadcast(cached_name + "%/ throws " + FormatDice(cmd.v1), only_online);
+
+						const auto& text = cached_name + "%/ throws " + FormatDice(cmd.v1);
+
+						if (~account->flags & PF_SHADOWBAN)
+						{
+							g_players.broadcast(text, only_online);
+						}
+						else
+						{
+							player->broadcast(text);
+						}
 					}
 
 					// 200 ms
@@ -183,9 +221,12 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					}
 					else if (const auto target = g_players.get_player(cmd.v0))
 					{
-						const std::string dice = FormatDice(cmd.v1);
+						const std::string& dice = FormatDice(cmd.v1);
 
-						target->broadcast(cached_name + "%/%p throws " + dice + " to you (private)");
+						if (~account->flags & PF_SHADOWBAN)
+						{
+							target->broadcast(cached_name + "%/%p throws " + dice + " to you (private)");
+						}
 
 						listener->push_text("You throw " + dice + "%/ to " + target->account->get_name(std::unique_lock<account_list_t>(g_accounts)));
 					}
@@ -351,14 +392,14 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 							// TODO (message)
 
-							if (target->account->flags.fetch_xor(flag) & flag)
+							const u64 _flags = target->account->flags ^= flag;
+
+							if ((flag & PF_HIDDEN_FLAGS) == 0)
 							{
-								listener->push_text("Flag [" + std::string(FlagName[cmd.v1]) + "] has been removed.");
+								target->broadcast("Flag [" + std::string(FlagName[cmd.v1]) + (_flags & flag ? "] has been set." : "] has been removed."));
 							}
-							else
-							{
-								listener->push_text("Flag [" + std::string(FlagName[cmd.v1]) + "] has been set.");
-							}
+
+							listener->push_text("Flags: " + FormatFlags(_flags));
 
 							g_players.update_player(target, acc_lock);
 
@@ -417,17 +458,8 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 						info += target->account->uniq_name;
 						info += "\nEmail: ";
 						info += target->account->email;
-						info += "\nFlags:";
-
-						for (u32 i = 0; i < 64; i++)
-						{
-							if (target->account->flags & (1ull << i))
-							{
-								info += " [";
-								info += FlagName[i];
-								info += "]";
-							}
-						}
+						info += "\nFlags: ";
+						info += FormatFlags(target->account->flags);
 						
 						target->append_connection_info(info);
 

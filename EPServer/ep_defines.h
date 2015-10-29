@@ -167,7 +167,7 @@ public:
 		return m_ptr;
 	}
 
-	operator bool() const
+	explicit operator bool() const
 	{
 		return m_ptr != nullptr;
 	}
@@ -446,7 +446,7 @@ enum PlayerFlags : u64
 	PF_LOCK = 1ull << 2, // locked player
 	PF_SUPERADMIN = 1ull << 3, // full rights
 	PF_NOCHAT = 1ull << 4,
-	PF_NOALLYCHAT = 1ull << 5,
+	PF_SHADOWBAN = 1ull << 5,
 	PF_NOPRIVCHAT = 1ull << 6,
 	PF_NOGAME = 1ull << 7,
 	PF_NOCONNECT = 1ull << 8,
@@ -454,6 +454,7 @@ enum PlayerFlags : u64
 	PF_NEW_PLAYER = 1ull << 10,
 
 	PF_VOLATILE_FLAGS = PF_LOST | PF_NEW_PLAYER,
+	PF_HIDDEN_FLAGS = PF_SHADOWBAN | PF_NEW_PLAYER,
 };
 
 static const char* const FlagName[] =
@@ -462,20 +463,37 @@ static const char* const FlagName[] =
 	"offline",
 	"hold",
 	"administrator",
-	"no_publicchat",
-	"no_allychat",
-	"no_privatechat",
+	"no_public_chat",
+	"shadow_banned",
+	"no_private_chat",
 	"no_game",
-	"ban", "???", "???", "???", "???", "???", "???", "???",
-	"???", "???", "???", "???", "???", "???", "???", "???",
-	"???", "???", "???", "???", "???", "???", "???", "???",
-	"???", "???", "???", "???", "???", "???", "???", "???",
-	"???", "???", "???", "???", "???", "???", "???", "???",
-	"???", "???", "???", "???", "???", "???", "???", "???",
-	"???", "???", "???", "???", "???", "???", "???", "???",
+	"ban", "lost", "new", "11", "12", "13", "14", "15",
+	"16", "17", "18", "19", "20", "21", "22", "23",
+	"24", "25", "26", "27", "28", "29", "30", "31",
+	"32", "33", "34", "35", "36", "37", "38", "39",
+	"40", "41", "42", "43", "44", "45", "46", "47",
+	"48", "49", "50", "51", "52", "53", "54", "55",
+	"56", "57", "58", "59", "60", "61", "62", "63",
 };
 
-static std::string FormatDice(const s32 data)
+static std::string FormatFlags(u64 flags)
+{
+	std::string result;
+
+	for (u32 i = 0; i < 64; i++)
+	{
+		if (flags & (1ull << i))
+		{
+			result += '[';
+			result += FlagName[i];
+			result += ']';
+		}
+	}
+
+	return result;
+}
+
+static std::string FormatDice(s32 data)
 {
 	struct DiceData
 	{
@@ -483,7 +501,7 @@ static std::string FormatDice(const s32 data)
 		u8 size; // dice size
 		s16 add; // dice modifier
 	}
-	const dice = reinterpret_cast<const DiceData&>(data);
+	const dice = reinterpret_cast<DiceData&>(data);
 
 	s32 res = dice.add;
 

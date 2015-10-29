@@ -23,7 +23,7 @@ void player_t::assign_player_element(PlayerElement& info, const std::unique_lock
 		info.name = account->name;
 	}
 
-	info.flags = account->flags;
+	info.flags = account->flags & ~PF_HIDDEN_FLAGS;
 	info.gindex = -1;
 }
 
