@@ -1,18 +1,5 @@
 ﻿#pragma once
 
-// Print logs with current time
-template<typename... T> inline void ep_printf(const char* fmt, T&&... args)
-{
-	print_time();
-	std::printf(fmt, std::forward<T>(args)...);
-}
-
-inline void ep_printf(const char* fmt)
-{
-	print_time();
-	std::printf("%s", fmt);
-}
-
 // MD5 hash container
 using md5_t = std::array<unsigned char, 16>;
 
@@ -208,11 +195,16 @@ public:
 		: m_size(static_cast<u8>(std::min<std::size_t>(len, N)))
 	{
 		std::memcpy(m_data, str, m_size);
-		std::memset(m_data + m_size, 0, N - m_size);
 	}
 
 	// Construct from std::string
 	short_str_t(const std::string& str)
+		: short_str_t(str.data(), str.size())
+	{
+	}
+
+	// Construct from another short_str_t
+	template<u8 N2> short_str_t(const short_str_t<N2>& str)
 		: short_str_t(str.data(), str.size())
 	{
 	}
@@ -244,17 +236,6 @@ public:
 		return m_size == right.size() && std::memcmp(m_data, right.data(), m_size) == 0;
 	}
 
-	// Convert to null-terminated string
-	std::unique_ptr<char[]> c_str() const
-	{
-		std::unique_ptr<char[]> res(new char[m_size + 1]);
-
-		std::memcpy(res.get(), m_data, m_size);
-		res[m_size] = 0;
-
-		return res;
-	}
-
 	// Get size
 	std::size_t size() const
 	{
@@ -265,6 +246,12 @@ public:
 	const char* data() const
 	{
 		return m_data;
+	}
+
+	// Set empty
+	void clear()
+	{
+		m_size = 0;
 	}
 
 	// Serialize
@@ -279,7 +266,8 @@ public:
 	// Deserialize
 	std::size_t load(std::FILE* f)
 	{
-		*this = {};
+		clear();
+
 		std::size_t res = 0;
 		res += std::fread(&m_size, 1, 1, f);
 		res += std::fread(m_data, 1, m_size, f);
@@ -518,21 +506,16 @@ static std::string FormatDice(s32 data)
 	}
 	const dice = reinterpret_cast<DiceData&>(data);
 
+	const s32 size = dice.size ? dice.size : 256;
+
 	s32 res = dice.add;
 
 	for (u32 i = 0; i < dice.count; i++)
 	{
-		res += rand() % dice.size + 1;
+		res += rand() % size + 1;
 	}
 
-	auto format_add = [](int add) -> std::string
-	{
-		if (add < 0) return std::to_string(add);
-		if (add > 0) return "+" + std::to_string(add);
-		return{};
-	};
-
-	return std::to_string(dice.count) + "d" + std::to_string(dice.size) + format_add(dice.add) + " = " + std::to_string(res);
+	return fmt::format(dice.add ? "{}d{}{:+} = {}" : "{0}d{1} = {3}", +dice.count, size, dice.add, res);
 }
 
 static bool IsLoginValid(const char* str, std::size_t len)
@@ -563,8 +546,7 @@ static bool IsLoginValid(const char* str, std::size_t len)
 static f64 GetTime()
 {
 	const std::time_t now = std::time(0);
-
-	auto tm = std::gmtime(&now); // get UTC time
+	const std::tm* time = std::gmtime(&now); // get UTC time
 
 	auto days = [](int y) -> int // get number of days since 01.01.0001
 	{
@@ -572,5 +554,5 @@ static f64 GetTime()
 		return 365 * y + y / 4 - y / 100 + y / 400 + 1;
 	};
 
-	return 2.0 + (days(tm->tm_year + 1900) - days(1900)) + tm->tm_yday + tm->tm_hour / 24.0 + tm->tm_min / 1440.0 + tm->tm_sec / 86400.0;
+	return 2.0 + (days(time->tm_year + 1900) - days(1900)) + time->tm_yday + time->tm_hour / 24.0 + time->tm_min / 1440.0 + time->tm_sec / 86400.0;
 }

@@ -31,20 +31,12 @@ void player_t::append_connection_info(std::string& info)
 {
 	std::lock_guard<std::mutex> lock(m_mutex);
 
-	for (auto& listener : m_list)
+	for (const auto& listener : m_list)
 	{
 		inaddr_t addr;
 		addr.s_addr = listener->addr;
 
-		info += "\nConnection: ";
-		info += inet_ntoa(addr);
-		info += ':';
-		info += std::to_string(listener->port);
-
-		if (listener->enc)
-		{
-			info += " (encrypted)";
-		}
+		info += fmt::format("\nConnection: {}:{}{}", inet_ntoa(addr), listener->port, listener->enc ? " (encrypted)" : "");
 	}
 }
 

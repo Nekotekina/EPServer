@@ -1,6 +1,6 @@
 #pragma once
 
-#if defined(_MSC_VER)
+#ifdef _MSC_VER
 #define _CRT_SECURE_NO_WARNINGS // TODO
 #endif
 
@@ -22,6 +22,10 @@
 #include <mutex>
 #include <condition_variable>
 #include <algorithm>
+
+// C++ Format Library https://github.com/cppformat/cppformat
+#define FMT_USE_IOSTREAMS 0
+#include "format.h"
 
 #ifndef NOMINMAX
 #define NOMINMAX // TODO
@@ -51,6 +55,13 @@ struct FILE_deleter
 using unique_FILE = std::unique_ptr<std::FILE, FILE_deleter>;
 
 void print_time();
+
+// Print logs with current time
+template<typename... T> inline void ep_printf(const char* fmt, const T&... args)
+{
+	print_time();
+	fmt::print(fmt, args...);
+}
 
 inline u32 rol32(u32 v, u32 s)
 {

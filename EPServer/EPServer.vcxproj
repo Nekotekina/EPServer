@@ -166,6 +166,7 @@
     <ClInclude Include="ep_listener.h" />
     <ClInclude Include="ep_player.h" />
     <ClInclude Include="ep_socket.h" />
+    <ClInclude Include="format.h" />
     <ClInclude Include="hl_md5.h" />
     <ClInclude Include="hl_types.h" />
     <ClInclude Include="rc6.h" />
@@ -177,6 +178,12 @@
     <ClCompile Include="ep_listener.cpp" />
     <ClCompile Include="ep_player.cpp" />
     <ClCompile Include="ep_socket.cpp" />
+    <ClCompile Include="format.cc">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="hl_md5.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>

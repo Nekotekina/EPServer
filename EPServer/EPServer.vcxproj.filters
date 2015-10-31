@@ -37,6 +37,9 @@
     <ClInclude Include="rc6.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="format.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -61,6 +64,9 @@
       <Filter>EPServer</Filter>
     </ClCompile>
     <ClCompile Include="rc6.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="format.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

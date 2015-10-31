@@ -17,7 +17,7 @@ add_definitions(-msse -msse2 -mssse3)
 include_directories(EPServer)
 include_directories(mpir)
 
-file(GLOB EPServer_SRC "EPServer/*.h" "EPServer/*.cpp")
+file(GLOB EPServer_SRC "EPServer/*.h" "EPServer/*.cpp" "EPServer/format.cc")
 
 add_executable(epserver ${EPServer_SRC})
 

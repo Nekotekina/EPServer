@@ -47,7 +47,7 @@ bool account_t::load(std::FILE* f)
 
 bool account_list_t::save(const std::unique_lock<account_list_t>& acc_lock)
 {
-	if (!acc_lock || m_mutex.try_lock())
+	if (!acc_lock || this != acc_lock.mutex())
 	{
 		std::printf("account.dat writing failed: mutex not locked\n");
 		return false;
@@ -113,15 +113,15 @@ std::shared_ptr<account_t> account_list_t::add_account(const short_str_t<16>& na
 		}
 	}
 
-	ep_printf("New account registered: %s\n", name.c_str().get());
+	ep_printf("New account registered: {}\n", name.operator std::string());
 
 	const auto acc = std::make_shared<account_t>();
 
 	acc->name = name;
 	acc->pass = pass;
 	acc->flags = m_list.empty() ? PF_SUPERADMIN : PF_NEW_PLAYER;
-	acc->uniq_name = {};
-	acc->email = {};
+	acc->uniq_name.clear();
+	acc->email.clear();
 
 	return m_list.emplace_back(acc), acc;
 }

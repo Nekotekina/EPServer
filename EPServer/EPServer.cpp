@@ -164,7 +164,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						if (~account->flags & PF_SHADOWBAN || player == target)
 						{
-							target->broadcast(cached_name + "%/%p%g writes (private):%x " + message + "%x");
+							target->broadcast(cached_name + "%/%p%g writes (private):%x " + message);
 						}
 					}
 					else
@@ -250,7 +250,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			{
 				if (account->flags & PF_SUPERADMIN)
 				{
-					g_players.broadcast(cached_name + "%/ %bwrites:%x " + std::string(cmd.data, text_size) + "%x");
+					g_players.broadcast(cached_name + "%/ %bwrites:%x " + std::string(cmd.data, text_size));
 				}
 				else
 				{
@@ -599,7 +599,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 			}
 			default:
 			{
-				listener->push_text("Invalid command (CMD " + std::to_string(cmd.cmd) + ", v0=" + std::to_string(cmd.v0) + ", v1=" + std::to_string(cmd.v1) + ", v2=" + std::to_string(cmd.v2) + ")");
+				listener->push_text(fmt::format("Invalid command (cmd={:#x}, v0={:#x}, v1={:#x}, v2={:#x})", cmd.cmd, cmd.v0, cmd.v1, cmd.v2));
 			}
 			}
 		}
@@ -665,13 +665,13 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 			default:
 			{
-				listener->push_text("Invalid command (SCMD " + std::to_string(scmd) + ")");
+				listener->push_text(fmt::format("Invalid command (scmd={:#x})", scmd));
 			}
 			}
 		}
 		else
 		{
-			listener->push_text("Invalid command (code=" + std::to_string(header.code) + ", size=" + std::to_string(header.size) + ")");
+			listener->push_text(fmt::format("Invalid command (code={:#x}, size={})", +header.code, header.size));
 
 			if (!socket->get(&cmd, header.size))
 			{
@@ -709,7 +709,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
 			(auth_info.reset(header.size), !socket->get(auth_info->data(), header.size)))
 		{
-			ep_printf_ip("- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
+			ep_printf_ip("- (AUTH-2) ({}, {})\n", ip, port, +header.code, header.size);
 			message(*socket, "Handshake failed.");
 			socket->put(ProtocolHeader{ SERVER_NONFATALDISCONNECT });
 			return;
@@ -758,7 +758,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		// check login
 		if (auth.name.size() > 16 || !IsLoginValid(auth.name.data(), auth.name.size()))
 		{
-			ep_printf_ip("- (AUTH-3) (%z)\n", ip, port, auth.name.size());
+			ep_printf_ip("- (AUTH-3) ({})\n", ip, port, auth.name.size());
 			message(*socket, "Invalid login.");
 			socket->put(ProtocolHeader{ SERVER_DISCONNECT });
 			return;
@@ -770,7 +770,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		MD5().MD5Update(&ctx, auth.pass.data(), 16); // calculate md5 from md5(password) arrived
 		MD5().MD5Final(auth.pass.data(), &ctx);
 
-		ep_printf_ip("* LOGIN: %s\n", ip, port, auth.name.c_str().get());
+		ep_printf_ip("* LOGIN: {}\n", ip, port, auth.name.operator std::string());
 
 		// find or create account
 		if (!(account = g_accounts.add_account(auth.name, auth.pass)))
@@ -902,25 +902,25 @@ int main(int arg_count, const char* args[])
 
 	if (std::signal(SIGINT, stop) == SIG_ERR)
 	{
-		std::printf("signal(SIGINT) failed");
+		ep_printf("signal(SIGINT) failed!\n");
 		return 0;
 	}
 
 	if (std::signal(SIGSEGV, fault) == SIG_ERR)
 	{
-		std::printf("signal(SIGSEGV) failed");
+		ep_printf("signal(SIGSEGV) failed!\n");
 		return 0;
 	}
 
-	std::printf("EPServer git version: " GIT_VERSION "\n");
-	std::printf("EPServer client version: " EP_VERSION "\n");
+	fmt::print("EPServer git version: {}\n", GIT_VERSION);
+	fmt::print("EPServer client version: {}\n", EP_VERSION);
 
-	std::printf("ipv4.dat not loaded!\n"); // TODO: load IP db
-	std::printf("ipv6.dat not loaded!\n"); // TODO: IPv6 support
+	fmt::print("ipv4.dat not loaded!\n"); // TODO: load IP db
+	fmt::print("ipv6.dat not loaded!\n"); // TODO: IPv6 support
 
 	g_accounts.load(); // load account info
 
-	std::printf("accounts: %zu\n", g_accounts.size());
+	fmt::print("accounts: {}\n", g_accounts.size());
 
 	if (unique_FILE f{ std::fopen("key.dat", "rb") })
 	{
@@ -995,10 +995,10 @@ int main(int arg_count, const char* args[])
 	}
 	else
 	{
-		std::printf("key.dat not found!\n");
+		fmt::print("key.dat not found!\n");
 	}
 
-	std::printf("key size: %d\n", g_key_size * 8);
+	fmt::print("key size: {}\n", g_key_size * 8);
 
 	if (g_auth_packet->size == 0)
 	{
@@ -1010,11 +1010,11 @@ int main(int arg_count, const char* args[])
 	g_keepalive_packet->get<ClientSCmdRec>() = { { CLIENT_SCMD, 2 }, SCMD_NONE };
 
 #ifdef _WIN32
-	WSADATA wsa_info = {};
+	WSADATA wsa_info{};
 
 	if (auto res = WSAStartup(MAKEWORD(2, 2), &wsa_info))
 	{
-		std::printf("WSAStartup() failed: 0x%x\n", res);
+		fmt::print("WSAStartup() failed: {:#x}\n", res);
 		return -1;
 	}
 
@@ -1027,7 +1027,7 @@ int main(int arg_count, const char* args[])
 	socket_id_t sid = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sid == INVALID_SOCKET)
 	{
-		std::printf("socket() failed: 0x%x\n", GETERROR);
+		fmt::print("socket() failed: {:#x}\n", GETERROR);
 		return -1;
 	}
 
@@ -1040,13 +1040,13 @@ int main(int arg_count, const char* args[])
 
 	if (bind(sid, reinterpret_cast<sockaddr*>(&info), sizeof(sockaddr_in)) == SOCKET_ERROR)
 	{
-		std::printf("bind() failed: 0x%x\n", GETERROR);
+		fmt::print("bind() failed: {:#x}\n", GETERROR);
 		return -1;
 	}
 
 	if (listen(sid, SOMAXCONN) == SOCKET_ERROR)
 	{
-		std::printf("listen() failed: 0x%x\n", GETERROR);
+		fmt::print("listen() failed: {:#x}\n", GETERROR);
 		return -1;
 	}
 

@@ -1,4 +1,5 @@
 #pragma once
+
 #include "ep_defines.h"
 #include "rc6.h"
 
@@ -27,19 +28,12 @@ using inaddr_t = decltype(sockaddr_in::sin_addr);
 
 #endif
 
-void print_time_ip(inaddr_t ip, u16 port);
-
 // Print logs with current time and specified IP:port
-template<typename... T> inline void ep_printf_ip(const char* fmt, inaddr_t ip, u16 port, T&&... args)
+template<typename... T> inline void ep_printf_ip(const char* fmt, inaddr_t ip, u16 port, const T&... args)
 {
-	print_time_ip(ip, port);
-	std::printf(fmt, std::forward<T>(args)...);
-}
-
-inline void ep_printf_ip(const char* fmt, inaddr_t ip, u16 port)
-{
-	print_time_ip(ip, port);
-	std::printf("%s", fmt);
+	print_time();
+	fmt::print("{:>16}:{:<6}", inet_ntoa(ip), port);
+	fmt::print(fmt, args...);
 }
 
 class socket_t
@@ -210,7 +204,7 @@ public:
 
 	virtual void flush() override
 	{
-		m_received = {}; // clear saved data
+		m_received.clear(); // clear saved data
 
 		return socket_t::flush();
 	}
