@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "rc6.h"
 
-rc6_cipher_t::rc6_cipher_t(packet_t key)
+rc6_cipher_t::rc6_cipher_t(const packet_t& key)
 {
 	if (key->size != 16 && key->size != 32 && key->size != 64)
 	{

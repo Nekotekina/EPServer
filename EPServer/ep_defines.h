@@ -50,26 +50,35 @@ public:
 		return *reinterpret_cast<T*>(reinterpret_cast<char*>(this + 1) + offset);
 	}
 
-	void* operator new(std::size_t count) = delete;
+	void* operator new[](std::size_t) = delete;
+	void* operator new(std::size_t) = delete;
 
-	void* operator new(std::size_t count, std::size_t size)
+	void* operator new(std::size_t count, s64 size)
 	{
-		return new char[count + size];
+		return std::malloc(count + size);
 	}
+
+	void* operator new(std::size_t count, void* old, s64 size)
+	{
+		return std::realloc(old, count + size);
+	}
+
+	void operator delete[](void*) = delete;
 
 	void operator delete(void* pointer)
 	{
-		return delete static_cast<char*>(pointer);
+		std::free(pointer);
 	}
 
-	void operator delete(void* pointer, std::size_t size)
+	void operator delete(void* pointer, s64 size)
 	{
-		return delete static_cast<char*>(pointer);
+		std::free(pointer);
 	}
 
-	void* operator new[](std::size_t) = delete;
-
-	void operator delete[](void*) = delete;
+	void operator delete(void* pointer, void* old, s64 size)
+	{
+		std::free(pointer);
+	}
 };
 
 static_assert(sizeof(packet_storage_t) == 2 * sizeof(std::size_t), "Invalid packet_storage_t size");
@@ -79,11 +88,10 @@ class packet_t final
 {
 	packet_storage_t* m_ptr = nullptr;
 
-	void dec_ref()
+	void dec_ref() noexcept
 	{
 		if (m_ptr && !--m_ptr->m_refcnt)
 		{
-			m_ptr->~packet_storage_t();
 			delete m_ptr;
 		}
 	}
@@ -106,8 +114,14 @@ public:
 	}
 
 	explicit packet_t(std::size_t size)
-		: m_ptr(new (size)packet_storage_t(size))
+		: m_ptr(new(size) packet_storage_t(size))
 	{
+	}
+
+	packet_t(const char* data, std::size_t size)
+		: m_ptr(new(size) packet_storage_t(size))
+	{
+		std::memcpy(m_ptr->data(), data, size);
 	}
 
 	packet_t(const packet_t& right)
@@ -157,9 +171,10 @@ public:
 		m_ptr = nullptr;
 	}
 
-	packet_storage_t* operator *() const
+	void reset(std::size_t size)
 	{
-		return m_ptr;
+		reset(); // TODO: use realloc if possible
+		m_ptr = new(size) packet_storage_t(size);
 	}
 
 	packet_storage_t* operator ->() const

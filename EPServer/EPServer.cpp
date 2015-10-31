@@ -111,7 +111,7 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 
 			case CMD_CHAT:
 			{
-				std::string message(cmd.data, text_size);
+				const std::string message(cmd.data, text_size);
 
 				if (message.find("%p") != std::string::npos)
 				{
@@ -685,7 +685,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 {
 	auto message = [](socket_t& socket, const char* text)
 	{
-		const packet_t packet = ServerTextRec::make(GetTime(), text, strlen(text));
+		const packet_t& packet = ServerTextRec::make(GetTime(), text, strlen(text));
 
 		socket.put(packet->data(), packet->size);
 	};
@@ -707,7 +707,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 		// validate auth packet content
 		if ((g_key_size != 0 || header.code != CLIENT_AUTH || header.size != sizeof(ClientAuthRec)) &&
 			(g_key_size == 0 || header.code != CLIENT_SECURE_AUTH || header.size != g_key_size) ||
-			(auth_info = packet_t{ header.size }, !socket->get(auth_info->data(), header.size)))
+			(auth_info.reset(header.size), !socket->get(auth_info->data(), header.size)))
 		{
 			ep_printf_ip("- (AUTH-2) (%d, %d)\n", ip, port, header.code, header.size);
 			message(*socket, "Handshake failed.");
@@ -736,9 +736,7 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 				if (num == 0)
 				{
 					// fix data displacement (allocate new block)
-					packet_t new_info{ g_key_size - i };
-					std::memcpy(new_info->data(), &auth_info->get(i), new_info->size);
-					auth_info = std::move(new_info);
+					auth_info = { &auth_info->get(i), g_key_size - i };
 					break;
 				}
 			}
@@ -750,13 +748,8 @@ void sender_thread(std::shared_ptr<socket_t> socket, inaddr_t ip, u16 port)
 			}
 			else
 			{
-				packet_t key{ 32 };
-
-				// copy session key
-				std::memcpy(key->data(), auth_info->get<SecureAuthRec>().ckey, key->size);
-
 				// re-initialize with encryption
-				socket = std::make_shared<cipher_socket_t>(socket->release(), std::move(key));
+				socket = std::make_shared<cipher_socket_t>(socket->release(), packet_t{ auth_info->get<SecureAuthRec>().ckey, 32 });
 			}
 		}
 
@@ -987,7 +980,7 @@ int main(int arg_count, const char* args[])
 			g_key_size = static_cast<u32>(mpz_size(g_key_d.get_mpz_t()) * sizeof(mp_limb_t));
 
 			// prepare auth packet
-			g_auth_packet = packet_t{ 3 + g_key_size * 2 };
+			g_auth_packet.reset(3 + g_key_size * 2);
 			g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH, static_cast<u16>(g_key_size * 2) };
 
 			// convert to base 256
@@ -1009,11 +1002,11 @@ int main(int arg_count, const char* args[])
 
 	if (g_auth_packet->size == 0)
 	{
-		g_auth_packet = packet_t{ 3 };
+		g_auth_packet.reset(3);
 		g_auth_packet->get<ProtocolHeader>() = { SERVER_AUTH };
 	}
 
-	g_keepalive_packet = packet_t{ 5 };
+	g_keepalive_packet.reset(5);
 	g_keepalive_packet->get<ClientSCmdRec>() = { { CLIENT_SCMD, 2 }, SCMD_NONE };
 
 #ifdef _WIN32
