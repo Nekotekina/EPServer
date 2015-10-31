@@ -1,4 +1,4 @@
-#include "stdafx.h"
+﻿#include "stdafx.h"
 #include "ep_defines.h"
 #include "ep_socket.h"
 #include "ep_account.h"
@@ -135,7 +135,9 @@ void receiver_thread(std::shared_ptr<socket_t> socket, std::shared_ptr<account_t
 					{
 						set_online();
 
-						const auto& text = cached_name + "%/ %bwrites:%x " + message + "%x";
+						const auto& text = message.substr(0, 4) == "/me " || message.substr(0, 4) == u8"/я "
+							? cached_name + "%/ " + message.substr(4)
+							: cached_name + "%/ %bwrites:%x " + message;
 
 						if (~account->flags & PF_SHADOWBAN)
 						{
